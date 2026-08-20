@@ -15,6 +15,7 @@ interface DocumentsState {
   setActiveContent: (content: string) => void;
   setActiveTitle: (title: string) => void;
   saveActive: () => Promise<void>;
+  reset: () => void;
 }
 
 let initPromise: Promise<void> | null = null;
@@ -111,5 +112,12 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
         .map((d) => (d.id === activeDoc.id ? { ...d, title: activeDoc.title, updatedAt } : d))
         .sort((a, b) => b.updatedAt - a.updatedAt),
     }));
+  },
+
+  // Called on lock: drop cached plaintext from JS memory and allow init()
+  // to run again on the next unlock instead of returning its stale promise.
+  reset: () => {
+    initPromise = null;
+    set({ documents: [], activeDoc: null, loading: true, saving: false });
   },
 }));

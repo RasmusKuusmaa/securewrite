@@ -1,17 +1,36 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
+import SetupFlow from "./components/SetupFlow";
+import UnlockScreen from "./components/UnlockScreen";
 import { useDocuments } from "./store/useDocuments";
+import { useVault } from "./store/useVault";
 import "./App.css";
 
 function App() {
-  const init = useDocuments((s) => s.init);
-  const loading = useDocuments((s) => s.loading);
+  const vaultLoading = useVault((s) => s.loading);
+  const initialized = useVault((s) => s.initialized);
+  const unlocked = useVault((s) => s.unlocked);
+  const checkStatus = useVault((s) => s.checkStatus);
+
+  const docsInit = useDocuments((s) => s.init);
+  const docsLoading = useDocuments((s) => s.loading);
+
+  // See SetupFlow: setup_vault() flips `initialized`/`unlocked` before the
+  // user has acknowledged the recovery key, so completion is tracked here
+  // rather than derived from the store.
+  const [setupAcknowledged, setSetupAcknowledged] = useState(false);
 
   useEffect(() => {
-    init();
-  }, [init]);
+    checkStatus();
+  }, [checkStatus]);
+
+  useEffect(() => {
+    if (unlocked) {
+      docsInit();
+    }
+  }, [unlocked, docsInit]);
 
   useEffect(() => {
     const win = getCurrentWindow();
@@ -25,7 +44,19 @@ function App() {
     };
   }, []);
 
-  if (loading) {
+  if (vaultLoading) {
+    return <div className="app-loading">Loading...</div>;
+  }
+
+  if (!initialized && !setupAcknowledged) {
+    return <SetupFlow onDone={() => setSetupAcknowledged(true)} />;
+  }
+
+  if (!unlocked) {
+    return <UnlockScreen />;
+  }
+
+  if (docsLoading) {
     return <div className="app-loading">Loading...</div>;
   }
 

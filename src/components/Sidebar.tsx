@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useDocuments } from "../store/useDocuments";
+import { useVault } from "../store/useVault";
 
 export default function Sidebar() {
   const documents = useDocuments((s) => s.documents);
@@ -8,6 +9,7 @@ export default function Sidebar() {
   const createDocument = useDocuments((s) => s.createDocument);
   const renameDocument = useDocuments((s) => s.renameDocument);
   const deleteDocument = useDocuments((s) => s.deleteDocument);
+  const lock = useVault((s) => s.lock);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -30,14 +32,19 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="sidebar-title">Documents</span>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => createDocument()}
-          title="New document"
-        >
-          +
-        </button>
+        <div className="sidebar-header-actions">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => createDocument()}
+            title="New document"
+          >
+            +
+          </button>
+          <button type="button" className="icon-button" onClick={() => lock()} title="Lock">
+            Lock
+          </button>
+        </div>
       </div>
       <ul className="doc-list">
         {documents.map((doc) => (

@@ -78,6 +78,12 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
 .sidebar-title {
   font-size: 0.85rem;
   font-weight: 600;
@@ -271,6 +277,129 @@ textarea {
   background-color: var(--hover-bg);
 }
 
+/* Auth screens (setup / unlock) */
+
+.auth-screen {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-card h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.auth-subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.auth-card input[type="password"],
+.auth-card input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+  font-size: 0.95rem;
+}
+
+.auth-error {
+  color: #c0392b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.primary-button {
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondary-button {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.link-button {
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem;
+}
+
+.auth-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.recovery-key-box {
+  width: 100%;
+  font-family: "Courier New", monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.03em;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: #fff;
+  resize: none;
+}
+
+.threat-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.threat-list-good {
+  color: inherit;
+}
+
+.threat-list-bad {
+  color: var(--muted);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #ededed;
@@ -286,7 +415,10 @@ textarea {
 
   .doc-rename-input,
   .search-bar input,
-  .search-bar button {
+  .search-bar button,
+  .auth-card input[type="password"],
+  .auth-card input[type="text"],
+  .recovery-key-box {
     background: #2a2a2a;
     border-color: var(--border);
     color: inherit;
