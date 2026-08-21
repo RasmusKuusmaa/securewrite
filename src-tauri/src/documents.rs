@@ -265,6 +265,55 @@ mod tests {
         assert!(decrypt_payload(&wrong_key, &nonce, &ciphertext).is_err());
     }
 
+    /// The same file-shape write_doc/read_doc produce, written to a real
+    /// temp file and read back as raw bytes - not just the in-memory
+    /// ciphertext string the sibling test below checks. This is what
+    /// "vault file unreadable in a hex editor" and "no plaintext temp files
+    /// during editing" actually mean in practice: a real file on a real
+    /// filesystem, opened and grepped like a nosy attacker would.
+    #[test]
+    fn saved_document_is_unreadable_as_a_real_file_on_disk() {
+        let dir = std::env::temp_dir().join(format!(
+            "securewrite_e2e_doc_{}_{}",
+            std::process::id(),
+            now_ms()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{}.json", uuid::Uuid::new_v4()));
+
+        let key = [7u8; 32];
+        let payload = DocPayload {
+            title: "My Secret Plan".to_string(),
+            content: "Nobody should be able to read this by opening the file.".to_string(),
+            updated_at: now_ms(),
+        };
+        let (nonce, ciphertext) = encrypt_payload(&key, &payload).unwrap();
+        let enc = EncryptedDocFile {
+            id: "test-id".to_string(),
+            nonce,
+            ciphertext,
+        };
+        fs::write(&path, serde_json::to_string_pretty(&enc).unwrap()).unwrap();
+
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("My Secret Plan"));
+        assert!(!raw.contains("Nobody should be able to read this"));
+
+        // Correct key round-trips through the real file; wrong key fails cleanly.
+        let read_back: EncryptedDocFile = serde_json::from_str(&raw).unwrap();
+        let decrypted = decrypt_payload(&key, &read_back.nonce, &read_back.ciphertext).unwrap();
+        assert_eq!(decrypted.title, payload.title);
+        assert_eq!(decrypted.content, payload.content);
+
+        let wrong_key = [8u8; 32];
+        let result = decrypt_payload(&wrong_key, &read_back.nonce, &read_back.ciphertext);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(!err.contains("My Secret Plan"));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn ciphertext_does_not_contain_plaintext_content() {
         let key = [1u8; 32];

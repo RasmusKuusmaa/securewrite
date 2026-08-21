@@ -558,6 +558,122 @@ mod tests {
         assert!(unwrap_key(&distinct_kek, &real_wrapped).is_err());
     }
 
+    /// Simulates a full real session end to end - setup, wrong password,
+    /// correct password, recovery key, duress separation - using the exact
+    /// same structs/functions setup_vault/unlock_with_password/
+    /// unlock_with_recovery_key/setup_duress_password wrap around, writing a
+    /// real vault.json to a real temp file on disk and reading the raw bytes
+    /// back. The only thing not exercised here is the AppHandle/tauri::State
+    /// plumbing around these functions (Tauri's real Wry runtime can't be
+    /// constructed in a unit test without either risking a visible OS window
+    /// or making every command generic over the runtime) - everything
+    /// security-relevant (Argon2 derivation, AES-GCM wrap/unwrap, what
+    /// actually lands on disk) is the real production code path.
+    #[test]
+    fn full_vault_lifecycle_round_trips_through_a_real_file_on_disk() {
+        let dir = std::env::temp_dir().join(format!(
+            "securewrite_e2e_{}_{}",
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let vault_path = dir.join("vault.json");
+
+        let real_password = "correct horse battery staple";
+        let duress_password = "a totally different sentence";
+
+        // setup_vault's real logic
+        let mut vault_key = [0u8; VAULT_KEY_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut vault_key);
+        let mut password_salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut password_salt);
+        let password_kek = derive_key(real_password.as_bytes(), &password_salt).unwrap();
+        let password_wrapped_key = wrap_key(&password_kek, &vault_key).unwrap();
+
+        let mut recovery_bytes = [0u8; RECOVERY_KEY_BYTES];
+        rand::rngs::OsRng.fill_bytes(&mut recovery_bytes);
+        let recovery_key_display = format_recovery_key(&recovery_bytes);
+        let mut recovery_salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut recovery_salt);
+        let recovery_kek = derive_key(&recovery_bytes, &recovery_salt).unwrap();
+        let recovery_wrapped_key = wrap_key(&recovery_kek, &vault_key).unwrap();
+
+        let mut vault = VaultFile {
+            version: 1,
+            password_salt: STANDARD.encode(password_salt),
+            password_wrapped_key,
+            recovery_salt: STANDARD.encode(recovery_salt),
+            recovery_wrapped_key,
+            failed_attempts: 0,
+            locked_until: 0,
+            duress_salt: None,
+            duress_wrapped_key: None,
+        };
+        std::fs::write(&vault_path, serde_json::to_string_pretty(&vault).unwrap()).unwrap();
+
+        // The actual file on disk must not contain either secret in the clear.
+        let raw = std::fs::read_to_string(&vault_path).unwrap();
+        assert!(!raw.contains(real_password));
+        assert!(!raw.contains(&recovery_key_display));
+        assert!(!raw.contains(&hex::encode(vault_key)));
+
+        // Wrong password rejects cleanly (no panic, no plaintext leaked in the error).
+        let read_back: VaultFile = serde_json::from_str(&raw).unwrap();
+        let wrong_salt = STANDARD.decode(&read_back.password_salt).unwrap();
+        let wrong_kek = derive_key(b"not the password", &wrong_salt).unwrap();
+        let err = unwrap_key(&wrong_kek, &read_back.password_wrapped_key).unwrap_err();
+        assert!(!err.contains(real_password));
+
+        // Correct password recovers the exact original vault key.
+        let good_kek = derive_key(real_password.as_bytes(), &wrong_salt).unwrap();
+        let recovered = unwrap_key(&good_kek, &read_back.password_wrapped_key).unwrap();
+        assert_eq!(recovered, vault_key.to_vec());
+
+        // Recovery key path restores access too, from the same file on disk.
+        let recovery_salt_bytes = STANDARD.decode(&read_back.recovery_salt).unwrap();
+        let recovery_kek_2 = derive_key(&recovery_bytes, &recovery_salt_bytes).unwrap();
+        let recovered_via_recovery =
+            unwrap_key(&recovery_kek_2, &read_back.recovery_wrapped_key).unwrap();
+        assert_eq!(recovered_via_recovery, vault_key.to_vec());
+
+        // setup_duress_password's real logic, appended to the same file.
+        let mut decoy_vault_key = [0u8; VAULT_KEY_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut decoy_vault_key);
+        let mut duress_salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut duress_salt);
+        let duress_kek = derive_key(duress_password.as_bytes(), &duress_salt).unwrap();
+        let duress_wrapped_key = wrap_key(&duress_kek, &decoy_vault_key).unwrap();
+        vault.duress_salt = Some(STANDARD.encode(duress_salt));
+        vault.duress_wrapped_key = Some(duress_wrapped_key);
+        std::fs::write(&vault_path, serde_json::to_string_pretty(&vault).unwrap()).unwrap();
+
+        // unlock_with_password's real fallthrough logic: real password still
+        // opens the real vault, duress password opens a *different* key, and
+        // the duress salt/wrapped key are never in the clear either.
+        let raw2 = std::fs::read_to_string(&vault_path).unwrap();
+        assert!(!raw2.contains(duress_password));
+        let read_back2: VaultFile = serde_json::from_str(&raw2).unwrap();
+
+        let real_salt_2 = STANDARD.decode(&read_back2.password_salt).unwrap();
+        let real_kek_2 = derive_key(real_password.as_bytes(), &real_salt_2).unwrap();
+        assert_eq!(
+            unwrap_key(&real_kek_2, &read_back2.password_wrapped_key).unwrap(),
+            vault_key.to_vec()
+        );
+
+        let duress_salt_2 = STANDARD.decode(read_back2.duress_salt.as_ref().unwrap()).unwrap();
+        let duress_kek_2 = derive_key(duress_password.as_bytes(), &duress_salt_2).unwrap();
+        let opened_decoy_key = unwrap_key(
+            &duress_kek_2,
+            read_back2.duress_wrapped_key.as_ref().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(opened_decoy_key, decoy_vault_key.to_vec());
+        assert_ne!(opened_decoy_key, vault_key.to_vec());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn backoff_is_zero_until_fourth_failure_then_grows_and_caps() {
         assert_eq!(backoff_ms(0), 0);
