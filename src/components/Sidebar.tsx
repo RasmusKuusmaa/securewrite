@@ -51,7 +51,12 @@ export default function Sidebar() {
           >
             ⚙
           </button>
-          <button type="button" className="icon-button" onClick={() => lock()} title="Lock">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => lock()}
+            title="Lock (Ctrl+Shift+L)"
+          >
             Lock
           </button>
         </div>
