@@ -42,9 +42,16 @@ struct VaultFile {
     locked_until: i64,
 }
 
-/// Holds the derived vault key in memory once unlocked. `Zeroizing` scrubs
-/// it on drop (lock, or app exit) so it doesn't linger in process memory.
-pub struct VaultKeyState(pub Mutex<Option<Zeroizing<Vec<u8>>>>);
+/// Holds the derived vault key in memory once unlocked, plus which vault it
+/// unlocked into (real vs. the duress/decoy vault - see setup_duress_password).
+/// `Zeroizing` scrubs the key on drop (lock, or app exit) so it doesn't
+/// linger in process memory.
+pub struct UnlockedVault {
+    pub key: Zeroizing<Vec<u8>>,
+    pub is_decoy: bool,
+}
+
+pub struct VaultKeyState(pub Mutex<Option<UnlockedVault>>);
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -141,10 +148,11 @@ pub fn vault_status(
     app: AppHandle,
     state: tauri::State<VaultKeyState>,
 ) -> Result<serde_json::Value, String> {
-    let unlocked = state.0.lock().map_err(|e| e.to_string())?.is_some();
+    let guard = state.0.lock().map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "initialized": is_initialized(&app),
-        "unlocked": unlocked,
+        "unlocked": guard.is_some(),
+        "isDecoy": guard.as_ref().map(|v| v.is_decoy).unwrap_or(false),
     }))
 }
 
@@ -189,7 +197,10 @@ pub fn setup_vault(
     };
     write_vault(&app, &vault)?;
 
-    *state.0.lock().map_err(|e| e.to_string())? = Some(Zeroizing::new(vault_key.to_vec()));
+    *state.0.lock().map_err(|e| e.to_string())? = Some(UnlockedVault {
+        key: Zeroizing::new(vault_key.to_vec()),
+        is_decoy: false,
+    });
 
     Ok(recovery_key_display)
 }
@@ -233,7 +244,10 @@ fn attempt_unlock(
             vault.failed_attempts = 0;
             vault.locked_until = 0;
             write_vault(app, &vault)?;
-            *state.0.lock().map_err(|e| e.to_string())? = Some(Zeroizing::new(vault_key));
+            *state.0.lock().map_err(|e| e.to_string())? = Some(UnlockedVault {
+                key: Zeroizing::new(vault_key),
+                is_decoy: false,
+            });
             Ok(())
         }
         Err(_) => {
@@ -285,14 +299,15 @@ pub fn lock_vault(state: tauri::State<VaultKeyState>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn get_vault_key(state: &tauri::State<VaultKeyState>) -> Result<Zeroizing<Vec<u8>>, String> {
-    state
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .as_ref()
-        .map(|k| Zeroizing::new(k.to_vec()))
-        .ok_or_else(|| "Vault is locked".to_string())
+/// Returns the unlocked vault key plus whether it's the real vault or the
+/// duress/decoy one - callers that persist data (documents.rs) use the flag
+/// to pick which directory to read/write.
+pub fn get_vault_context(
+    state: &tauri::State<VaultKeyState>,
+) -> Result<(Zeroizing<Vec<u8>>, bool), String> {
+    let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let unlocked = guard.as_ref().ok_or_else(|| "Vault is locked".to_string())?;
+    Ok((Zeroizing::new(unlocked.key.to_vec()), unlocked.is_decoy))
 }
 
 #[cfg(test)]

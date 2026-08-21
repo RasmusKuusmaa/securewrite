@@ -1,4 +1,4 @@
-use crate::crypto::{get_vault_key, VaultKeyState};
+use crate::crypto::{get_vault_context, VaultKeyState};
 use aes_gcm::aead::{Aead, KeyInit, OsRng as AeadOsRng};
 use aes_gcm::{Aes256Gcm, AeadCore, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -58,18 +58,22 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-fn documents_dir(app: &AppHandle) -> Result<PathBuf, String> {
+/// The duress/decoy vault (see crypto::setup_duress_password) lives in a
+/// separate directory with its own documents - unlocking with the duress
+/// password must never expose or even touch the real vault's files.
+fn documents_dir(app: &AppHandle, is_decoy: bool) -> Result<PathBuf, String> {
+    let name = if is_decoy { "documents_decoy" } else { "documents" };
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
-        .join("documents");
+        .join(name);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
-fn doc_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
-    Ok(documents_dir(app)?.join(format!("{id}.json")))
+fn doc_path(app: &AppHandle, is_decoy: bool, id: &str) -> Result<PathBuf, String> {
+    Ok(documents_dir(app, is_decoy)?.join(format!("{id}.json")))
 }
 
 fn encrypt_payload(key: &[u8], payload: &DocPayload) -> Result<(String, String), String> {
@@ -107,7 +111,7 @@ fn read_doc(path: &PathBuf, key: &[u8]) -> Result<Document, String> {
     })
 }
 
-fn write_doc(app: &AppHandle, key: &[u8], doc: &Document) -> Result<(), String> {
+fn write_doc(app: &AppHandle, is_decoy: bool, key: &[u8], doc: &Document) -> Result<(), String> {
     let payload = DocPayload {
         title: doc.title.clone(),
         content: doc.content.clone(),
@@ -120,7 +124,7 @@ fn write_doc(app: &AppHandle, key: &[u8], doc: &Document) -> Result<(), String> 
         ciphertext,
     };
     let raw = serde_json::to_string_pretty(&enc).map_err(|e| e.to_string())?;
-    fs::write(doc_path(app, &doc.id)?, raw).map_err(|e| e.to_string())
+    fs::write(doc_path(app, is_decoy, &doc.id)?, raw).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -128,8 +132,8 @@ pub fn list_documents(
     app: AppHandle,
     state: tauri::State<VaultKeyState>,
 ) -> Result<Vec<DocumentMeta>, String> {
-    let key = get_vault_key(&state)?;
-    let dir = documents_dir(&app)?;
+    let (key, is_decoy) = get_vault_context(&state)?;
+    let dir = documents_dir(&app, is_decoy)?;
     let mut metas = Vec::new();
     for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -149,14 +153,14 @@ pub fn create_document(
     app: AppHandle,
     state: tauri::State<VaultKeyState>,
 ) -> Result<Document, String> {
-    let key = get_vault_key(&state)?;
+    let (key, is_decoy) = get_vault_context(&state)?;
     let doc = Document {
         id: uuid::Uuid::new_v4().to_string(),
         title: "Untitled".to_string(),
         content: String::new(),
         updated_at: now_ms(),
     };
-    write_doc(&app, &key, &doc)?;
+    write_doc(&app, is_decoy, &key, &doc)?;
     Ok(doc)
 }
 
@@ -166,8 +170,8 @@ pub fn get_document(
     state: tauri::State<VaultKeyState>,
     id: String,
 ) -> Result<Document, String> {
-    let key = get_vault_key(&state)?;
-    read_doc(&doc_path(&app, &id)?, &key)
+    let (key, is_decoy) = get_vault_context(&state)?;
+    read_doc(&doc_path(&app, is_decoy, &id)?, &key)
 }
 
 #[tauri::command]
@@ -178,7 +182,7 @@ pub fn save_document(
     title: String,
     content: String,
 ) -> Result<i64, String> {
-    let key = get_vault_key(&state)?;
+    let (key, is_decoy) = get_vault_context(&state)?;
     let updated_at = now_ms();
     let doc = Document {
         id,
@@ -186,7 +190,7 @@ pub fn save_document(
         content,
         updated_at,
     };
-    write_doc(&app, &key, &doc)?;
+    write_doc(&app, is_decoy, &key, &doc)?;
     Ok(updated_at)
 }
 
@@ -197,12 +201,12 @@ pub fn rename_document(
     id: String,
     title: String,
 ) -> Result<(), String> {
-    let key = get_vault_key(&state)?;
-    let path = doc_path(&app, &id)?;
+    let (key, is_decoy) = get_vault_context(&state)?;
+    let path = doc_path(&app, is_decoy, &id)?;
     let mut doc = read_doc(&path, &key)?;
     doc.title = title;
     doc.updated_at = now_ms();
-    write_doc(&app, &key, &doc)
+    write_doc(&app, is_decoy, &key, &doc)
 }
 
 #[tauri::command]
@@ -211,8 +215,8 @@ pub fn delete_document(
     state: tauri::State<VaultKeyState>,
     id: String,
 ) -> Result<(), String> {
-    get_vault_key(&state)?;
-    let path = doc_path(&app, &id)?;
+    let (_, is_decoy) = get_vault_context(&state)?;
+    let path = doc_path(&app, is_decoy, &id)?;
     fs::remove_file(path).map_err(|e| e.to_string())
 }
 
