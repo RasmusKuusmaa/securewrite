@@ -318,19 +318,65 @@ fn attempt_unlock(
     }
 }
 
+/// Tries the real password slot, then - if configured - the duress/decoy
+/// slot, all from the same single password field. There is no separate
+/// "duress mode" input anywhere in the UI for an observer to notice; the
+/// only difference from the outside is which password was typed.
+///
+/// Not constant-time between the two checks: this app's threat model (see
+/// todo.md) is casual/opportunistic access, not sophisticated timing-side-
+/// channel analysis, and the duress feature's job is UI-level plausible
+/// deniability during a live coerced unlock - not surviving that kind of
+/// forensic scrutiny.
 #[tauri::command]
 pub fn unlock_with_password(
     app: AppHandle,
     state: tauri::State<VaultKeyState>,
     password: String,
 ) -> Result<(), String> {
-    attempt_unlock(
-        &app,
-        &state,
-        |v| v.password_salt.clone(),
-        |v| v.password_wrapped_key.clone(),
-        password.as_bytes(),
-    )
+    let mut vault = read_vault(&app)?;
+    let now = now_ms();
+    if now < vault.locked_until {
+        let wait_s = (vault.locked_until - now + 999) / 1000;
+        return Err(format!("Too many attempts. Try again in {wait_s}s."));
+    }
+
+    let real_salt = STANDARD
+        .decode(&vault.password_salt)
+        .map_err(|e| e.to_string())?;
+    let real_kek = derive_key(password.as_bytes(), &real_salt)?;
+    if let Ok(vault_key) = unwrap_key(&real_kek, &vault.password_wrapped_key) {
+        vault.failed_attempts = 0;
+        vault.locked_until = 0;
+        write_vault(&app, &vault)?;
+        *state.0.lock().map_err(|e| e.to_string())? = Some(UnlockedVault {
+            key: Zeroizing::new(vault_key),
+            is_decoy: false,
+        });
+        return Ok(());
+    }
+
+    if let (Some(duress_salt_b64), Some(duress_wrapped)) =
+        (vault.duress_salt.clone(), vault.duress_wrapped_key.clone())
+    {
+        let duress_salt = STANDARD.decode(&duress_salt_b64).map_err(|e| e.to_string())?;
+        let duress_kek = derive_key(password.as_bytes(), &duress_salt)?;
+        if let Ok(decoy_key) = unwrap_key(&duress_kek, &duress_wrapped) {
+            vault.failed_attempts = 0;
+            vault.locked_until = 0;
+            write_vault(&app, &vault)?;
+            *state.0.lock().map_err(|e| e.to_string())? = Some(UnlockedVault {
+                key: Zeroizing::new(decoy_key),
+                is_decoy: true,
+            });
+            return Ok(());
+        }
+    }
+
+    vault.failed_attempts += 1;
+    vault.locked_until = now + backoff_ms(vault.failed_attempts);
+    write_vault(&app, &vault)?;
+    Err("Incorrect password or recovery key".to_string())
 }
 
 #[tauri::command]
@@ -441,6 +487,28 @@ mod tests {
         let bytes = [0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17];
         let formatted = format_recovery_key(&bytes).to_lowercase().replace('-', " ");
         assert_eq!(normalize_recovery_key(&formatted), bytes);
+    }
+
+    #[test]
+    fn real_and_duress_keks_cannot_unwrap_each_others_slot() {
+        // Mirrors unlock_with_password: the real vault key and decoy vault
+        // key are wrapped under independently-derived keks. Neither kek
+        // should be able to unwrap the other's slot - otherwise a duress
+        // unlock could accidentally expose the real vault, or vice versa.
+        let real_vault_key = [1u8; VAULT_KEY_LEN];
+        let decoy_vault_key = [2u8; VAULT_KEY_LEN];
+
+        let real_kek = derive_key(b"real password", &[20u8; SALT_LEN]).unwrap();
+        let real_wrapped = wrap_key(&real_kek, &real_vault_key).unwrap();
+
+        let duress_kek = derive_key(b"duress password", &[21u8; SALT_LEN]).unwrap();
+        let duress_wrapped = wrap_key(&duress_kek, &decoy_vault_key).unwrap();
+
+        assert_eq!(unwrap_key(&real_kek, &real_wrapped).unwrap(), real_vault_key);
+        assert!(unwrap_key(&real_kek, &duress_wrapped).is_err());
+
+        assert_eq!(unwrap_key(&duress_kek, &duress_wrapped).unwrap(), decoy_vault_key);
+        assert!(unwrap_key(&duress_kek, &real_wrapped).is_err());
     }
 
     #[test]
