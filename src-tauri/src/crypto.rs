@@ -569,6 +569,16 @@ mod tests {
     /// or making every command generic over the runtime) - everything
     /// security-relevant (Argon2 derivation, AES-GCM wrap/unwrap, what
     /// actually lands on disk) is the real production code path.
+    /// Removes its directory on drop - including on panic/unwind from a
+    /// failed assertion - so a broken assertion mid-test doesn't leak a
+    /// temp dir on every failing run.
+    struct CleanupOnDrop(std::path::PathBuf);
+    impl Drop for CleanupOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn full_vault_lifecycle_round_trips_through_a_real_file_on_disk() {
         let dir = std::env::temp_dir().join(format!(
@@ -577,6 +587,7 @@ mod tests {
             now_ms()
         ));
         std::fs::create_dir_all(&dir).unwrap();
+        let _cleanup = CleanupOnDrop(dir.clone());
         let vault_path = dir.join("vault.json");
 
         let real_password = "correct horse battery staple";
@@ -670,8 +681,6 @@ mod tests {
         .unwrap();
         assert_eq!(opened_decoy_key, decoy_vault_key.to_vec());
         assert_ne!(opened_decoy_key, vault_key.to_vec());
-
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

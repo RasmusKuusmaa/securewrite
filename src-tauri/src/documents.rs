@@ -271,6 +271,16 @@ mod tests {
     /// "vault file unreadable in a hex editor" and "no plaintext temp files
     /// during editing" actually mean in practice: a real file on a real
     /// filesystem, opened and grepped like a nosy attacker would.
+    /// Removes its directory on drop - including on panic/unwind from a
+    /// failed assertion - so a broken assertion mid-test doesn't leak a
+    /// temp dir on every failing run.
+    struct CleanupOnDrop(std::path::PathBuf);
+    impl Drop for CleanupOnDrop {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn saved_document_is_unreadable_as_a_real_file_on_disk() {
         let dir = std::env::temp_dir().join(format!(
@@ -279,6 +289,7 @@ mod tests {
             now_ms()
         ));
         fs::create_dir_all(&dir).unwrap();
+        let _cleanup = CleanupOnDrop(dir.clone());
         let path = dir.join(format!("{}.json", uuid::Uuid::new_v4()));
 
         let key = [7u8; 32];
@@ -310,8 +321,6 @@ mod tests {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(!err.contains("My Secret Plan"));
-
-        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
