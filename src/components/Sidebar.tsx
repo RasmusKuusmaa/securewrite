@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDocuments } from "../store/useDocuments";
 import { useVault } from "../store/useVault";
+import SettingsPanel from "./SettingsPanel";
 
 export default function Sidebar() {
   const documents = useDocuments((s) => s.documents);
@@ -14,6 +15,7 @@ export default function Sidebar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const startEditing = (id: string, title: string) => {
     setEditingId(id);
@@ -41,11 +43,21 @@ export default function Sidebar() {
           >
             +
           </button>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings"
+          >
+            ⚙
+          </button>
           <button type="button" className="icon-button" onClick={() => lock()} title="Lock">
             Lock
           </button>
         </div>
       </div>
+
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       <ul className="doc-list">
         {documents.map((doc) => (
           <li
