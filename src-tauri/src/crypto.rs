@@ -243,6 +243,17 @@ pub fn setup_duress_password(
 
     let mut vault = read_vault(&app)?;
 
+    // A duress password that also happens to unlock the real vault would make
+    // the duress slot permanently unreachable - unlock_with_password always
+    // tries the real slot first and returns on success. Reject that here,
+    // at setup time, rather than let it fail silently at the moment it's
+    // meant to matter most.
+    let real_salt = STANDARD.decode(&vault.password_salt).map_err(|e| e.to_string())?;
+    let real_kek = derive_key(duress_password.as_bytes(), &real_salt)?;
+    if unwrap_key(&real_kek, &vault.password_wrapped_key).is_ok() {
+        return Err("Duress password must be different from your master password".to_string());
+    }
+
     let mut decoy_vault_key = [0u8; VAULT_KEY_LEN];
     rand::rngs::OsRng.fill_bytes(&mut decoy_vault_key);
 
@@ -259,8 +270,21 @@ pub fn setup_duress_password(
     Ok(())
 }
 
+/// Gated the same way as setup_duress_password (unlocked + real vault only) -
+/// otherwise this would be a no-auth oracle any webview JS could invoke to
+/// learn whether a duress feature exists at all, before ever unlocking or
+/// from inside the decoy, undermining the concealment setup_duress_password
+/// is careful to preserve.
 #[tauri::command]
-pub fn has_duress_configured(app: AppHandle) -> Result<bool, String> {
+pub fn has_duress_configured(
+    app: AppHandle,
+    state: tauri::State<VaultKeyState>,
+) -> Result<bool, String> {
+    let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let unlocked = guard.as_ref().ok_or_else(|| "Vault is locked".to_string())?;
+    if unlocked.is_decoy {
+        return Err("Not available".to_string());
+    }
     Ok(read_vault(&app)?.duress_wrapped_key.is_some())
 }
 
@@ -514,6 +538,24 @@ mod tests {
 
         assert_eq!(unwrap_key(&duress_kek, &duress_wrapped).unwrap(), decoy_vault_key);
         assert!(unwrap_key(&duress_kek, &real_wrapped).is_err());
+    }
+
+    #[test]
+    fn duress_collision_check_detects_reused_password_but_not_a_distinct_one() {
+        // Mirrors the guard added to setup_duress_password: deriving a kek
+        // from the candidate duress password + the real slot's salt and
+        // trying to unwrap the real slot's wrapped key is how a reused
+        // password gets caught before it can silently disable the feature.
+        let real_salt = [30u8; SALT_LEN];
+        let real_vault_key = [6u8; VAULT_KEY_LEN];
+        let real_kek = derive_key(b"my password", &real_salt).unwrap();
+        let real_wrapped = wrap_key(&real_kek, &real_vault_key).unwrap();
+
+        let reused_kek = derive_key(b"my password", &real_salt).unwrap();
+        assert!(unwrap_key(&reused_kek, &real_wrapped).is_ok());
+
+        let distinct_kek = derive_key(b"a totally different password", &real_salt).unwrap();
+        assert!(unwrap_key(&distinct_kek, &real_wrapped).is_err());
     }
 
     #[test]
