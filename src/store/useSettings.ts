@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 interface Settings {
   idleTimeoutMinutes: number;
   lockOnBlur: boolean;
+  flowPauseSeconds: number;
+  flowHardcore: boolean;
 }
 
 interface SettingsState extends Settings {
@@ -15,6 +17,8 @@ interface SettingsState extends Settings {
 export const useSettings = create<SettingsState>((set, get) => ({
   idleTimeoutMinutes: 10,
   lockOnBlur: false,
+  flowPauseSeconds: 6,
+  flowHardcore: false,
   loaded: false,
 
   load: async () => {
@@ -23,8 +27,14 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
 
   update: async (patch: Partial<Settings>) => {
-    const { idleTimeoutMinutes, lockOnBlur } = get();
-    const next: Settings = { idleTimeoutMinutes, lockOnBlur, ...patch };
+    const { idleTimeoutMinutes, lockOnBlur, flowPauseSeconds, flowHardcore } = get();
+    const next: Settings = {
+      idleTimeoutMinutes,
+      lockOnBlur,
+      flowPauseSeconds,
+      flowHardcore,
+      ...patch,
+    };
     await invoke("save_settings", { settings: next });
     set(next);
   },

@@ -8,6 +8,14 @@ use tauri::{AppHandle, Manager};
 pub struct Settings {
     pub idle_timeout_minutes: u32,
     pub lock_on_blur: bool,
+    #[serde(default = "default_flow_pause_seconds")]
+    pub flow_pause_seconds: u32,
+    #[serde(default)]
+    pub flow_hardcore: bool,
+}
+
+fn default_flow_pause_seconds() -> u32 {
+    6
 }
 
 impl Default for Settings {
@@ -15,6 +23,8 @@ impl Default for Settings {
         Settings {
             idle_timeout_minutes: 10,
             lock_on_blur: false,
+            flow_pause_seconds: 6,
+            flow_hardcore: false,
         }
     }
 }

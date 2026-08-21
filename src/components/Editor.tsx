@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDocuments } from "../store/useDocuments";
+import { useSettings } from "../store/useSettings";
 import SearchBar from "./SearchBar";
+import FlowModeDialog from "./FlowModeDialog";
 import { scrambleText } from "../lib/mask";
 
 const AUTOSAVE_DELAY_MS = 2500;
+const FLOW_TICK_MS = 100;
 
 export default function Editor() {
   const activeDoc = useDocuments((s) => s.activeDoc);
@@ -11,12 +14,25 @@ export default function Editor() {
   const setActiveContent = useDocuments((s) => s.setActiveContent);
   const setActiveTitle = useDocuments((s) => s.setActiveTitle);
   const saveActive = useDocuments((s) => s.saveActive);
+  const flowPauseSeconds = useSettings((s) => s.flowPauseSeconds);
+  const flowHardcore = useSettings((s) => s.flowHardcore);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const [searchOpen, setSearchOpen] = useState(false);
   const [masked, setMasked] = useState(false);
+
+  // Flow-writing mode: opt-in per session, off whenever the active document
+  // changes. Pausing past the threshold wipes back to flowCheckpoint - the
+  // content as of the moment flow mode was last turned on (see
+  // FlowModeDialog / todo.md 3.4).
+  const [flowMode, setFlowMode] = useState(false);
+  const [showFlowConfirm, setShowFlowConfirm] = useState(false);
+  const [flowProgress, setFlowProgress] = useState(0);
+  const [flowJustWiped, setFlowJustWiped] = useState(false);
+  const flowCheckpoint = useRef("");
+  const lastKeystroke = useRef(0);
 
   const scheduleSave = () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -38,6 +54,50 @@ export default function Editor() {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
   }, [activeDoc?.id]);
+
+  // Never let flow mode carry across documents - re-opt-in is required per doc.
+  useEffect(() => {
+    setFlowMode(false);
+    setFlowProgress(0);
+  }, [activeDoc?.id]);
+
+  // Ticks while flow mode is active, wiping back to the checkpoint once the
+  // pause threshold is crossed. Runs on a plain interval rather than
+  // scheduling a single timeout so the progress indicator can update
+  // continuously and every keystroke can push the deadline out cheaply.
+  useEffect(() => {
+    if (!flowMode) return;
+    const thresholdMs = flowPauseSeconds * 1000;
+    const id = window.setInterval(() => {
+      const elapsed = Date.now() - lastKeystroke.current;
+      if (elapsed >= thresholdMs) {
+        setActiveContent(flowCheckpoint.current);
+        lastKeystroke.current = Date.now();
+        setFlowProgress(0);
+        setFlowJustWiped(true);
+        window.setTimeout(() => setFlowJustWiped(false), 1500);
+      } else {
+        setFlowProgress(elapsed / thresholdMs);
+      }
+    }, FLOW_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [flowMode, flowPauseSeconds, setActiveContent]);
+
+  const enterFlowMode = () => {
+    if (!activeDoc) return;
+    flowCheckpoint.current = activeDoc.content;
+    lastKeystroke.current = Date.now();
+    setFlowProgress(0);
+    setFlowMode(true);
+  };
+
+  // The only way out is "save and exit" - flow mode's whole point is that
+  // there's no discard-without-saving path back to a normal session.
+  const exitFlowMode = () => {
+    setFlowMode(false);
+    setFlowProgress(0);
+    flushSave();
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -117,7 +177,39 @@ export default function Editor() {
         >
           Find
         </button>
+        <button
+          type="button"
+          className={`icon-button ${flowMode ? "icon-button-active" : ""}`}
+          onClick={() => (flowMode ? exitFlowMode() : setShowFlowConfirm(true))}
+          title="Flow-writing mode: wipes unsaved progress if you pause too long"
+        >
+          {flowMode ? "Exit flow" : "Flow"}
+        </button>
       </div>
+
+      {showFlowConfirm && (
+        <FlowModeDialog
+          onConfirm={() => {
+            setShowFlowConfirm(false);
+            enterFlowMode();
+          }}
+          onCancel={() => setShowFlowConfirm(false)}
+        />
+      )}
+
+      {flowMode && (
+        <div className="flow-status">
+          <div className="flow-progress-track">
+            <div
+              className="flow-progress-fill"
+              style={{ width: `${Math.min(1, flowProgress) * 100}%` }}
+            />
+          </div>
+          <span className="flow-status-text">
+            {flowJustWiped ? "Wiped - paused too long" : "Keep typing or it wipes"}
+          </span>
+        </div>
+      )}
 
       {searchOpen && (
         <SearchBar
@@ -135,10 +227,29 @@ export default function Editor() {
           value={content}
           onChange={(e) => {
             setActiveContent(e.target.value);
-            scheduleSave();
+            if (flowMode) {
+              // Autosave is suppressed in flow mode - persisting the draft
+              // to disk mid-session would defeat the point of the wipe.
+              lastKeystroke.current = Date.now();
+            } else {
+              scheduleSave();
+            }
           }}
           onScroll={syncOverlayScroll}
-          onBlur={flushSave}
+          onBlur={flowMode ? undefined : flushSave}
+          onCopy={(e) => {
+            if (flowMode && flowHardcore) e.preventDefault();
+          }}
+          onCut={(e) => {
+            if (flowMode && flowHardcore) e.preventDefault();
+          }}
+          onKeyDown={(e) => {
+            if (!flowMode || !flowHardcore) return;
+            const key = e.key.toLowerCase();
+            if ((e.ctrlKey || e.metaKey) && (key === "z" || key === "y")) {
+              e.preventDefault();
+            }
+          }}
           placeholder="Start writing..."
           spellCheck={false}
         />

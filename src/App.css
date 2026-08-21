@@ -238,6 +238,37 @@ textarea {
   background-color: var(--active-bg);
 }
 
+.flow-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 1.25rem;
+}
+
+.flow-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.flow-progress-fill {
+  height: 100%;
+  background: #c0392b;
+  transition: width 100ms linear;
+}
+
+.flow-status-text {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.flow-dialog {
+  width: 380px;
+}
+
 .editor-footer {
   display: flex;
   gap: 1rem;
