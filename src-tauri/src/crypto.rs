@@ -328,12 +328,17 @@ fn attempt_unlock(
 /// channel analysis, and the duress feature's job is UI-level plausible
 /// deniability during a live coerced unlock - not surviving that kind of
 /// forensic scrutiny.
+/// Returns whether the password matched the real slot (false) or the
+/// duress/decoy slot (true), so the frontend can update its own isDecoy
+/// state without a second round-trip - this is just an implementation
+/// detail for the app that already knows the password it sent, not new
+/// information exposed anywhere in the UI.
 #[tauri::command]
 pub fn unlock_with_password(
     app: AppHandle,
     state: tauri::State<VaultKeyState>,
     password: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let mut vault = read_vault(&app)?;
     let now = now_ms();
     if now < vault.locked_until {
@@ -353,7 +358,7 @@ pub fn unlock_with_password(
             key: Zeroizing::new(vault_key),
             is_decoy: false,
         });
-        return Ok(());
+        return Ok(false);
     }
 
     if let (Some(duress_salt_b64), Some(duress_wrapped)) =
@@ -369,7 +374,7 @@ pub fn unlock_with_password(
                 key: Zeroizing::new(decoy_key),
                 is_decoy: true,
             });
-            return Ok(());
+            return Ok(true);
         }
     }
 
