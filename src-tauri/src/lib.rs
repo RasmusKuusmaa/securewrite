@@ -16,6 +16,8 @@ pub fn run() {
             crypto::unlock_with_password,
             crypto::unlock_with_recovery_key,
             crypto::lock_vault,
+            crypto::setup_duress_password,
+            crypto::has_duress_configured,
             documents::list_documents,
             documents::create_document,
             documents::get_document,

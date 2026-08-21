@@ -40,6 +40,12 @@ struct VaultFile {
     failed_attempts: u32,
     #[serde(default)]
     locked_until: i64,
+    /// Absent until setup_duress_password() is called - see that function
+    /// for why this feature exists and how it stays hidden from the decoy.
+    #[serde(default)]
+    duress_salt: Option<String>,
+    #[serde(default)]
+    duress_wrapped_key: Option<WrappedKey>,
 }
 
 /// Holds the derived vault key in memory once unlocked, plus which vault it
@@ -194,6 +200,8 @@ pub fn setup_vault(
         recovery_wrapped_key,
         failed_attempts: 0,
         locked_until: 0,
+        duress_salt: None,
+        duress_wrapped_key: None,
     };
     write_vault(&app, &vault)?;
 
@@ -203,6 +211,57 @@ pub fn setup_vault(
     });
 
     Ok(recovery_key_display)
+}
+
+/// Sets up (or replaces) the duress/decoy password. Only callable while
+/// unlocked into the *real* vault - can't be configured from inside a decoy,
+/// since that would mean an already-coerced unlock could be used to plant a
+/// new decoy layer. Deliberately not exposed anywhere in the UI while
+/// `is_decoy` is true, for the same reason: the existence of this feature
+/// itself shouldn't be discoverable from inside the decoy.
+///
+/// Replacing an existing duress password generates a brand new decoy vault
+/// key, which makes any previous decoy content permanently unreadable - this
+/// is treated as an intentional "reset", not a bug; the UI must warn about
+/// it before calling this.
+#[tauri::command]
+pub fn setup_duress_password(
+    app: AppHandle,
+    state: tauri::State<VaultKeyState>,
+    duress_password: String,
+) -> Result<(), String> {
+    {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        let unlocked = guard.as_ref().ok_or_else(|| "Vault is locked".to_string())?;
+        if unlocked.is_decoy {
+            return Err("Not available".to_string());
+        }
+    }
+    if duress_password.len() < 8 {
+        return Err("Password must be at least 8 characters".to_string());
+    }
+
+    let mut vault = read_vault(&app)?;
+
+    let mut decoy_vault_key = [0u8; VAULT_KEY_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut decoy_vault_key);
+
+    let mut duress_salt = [0u8; SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut duress_salt);
+    let duress_kek = derive_key(duress_password.as_bytes(), &duress_salt)?;
+    let duress_wrapped_key = wrap_key(&duress_kek, &decoy_vault_key)?;
+
+    vault.duress_salt = Some(STANDARD.encode(duress_salt));
+    vault.duress_wrapped_key = Some(duress_wrapped_key);
+    write_vault(&app, &vault)?;
+    crate::documents::clear_decoy_documents(&app)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn has_duress_configured(app: AppHandle) -> Result<bool, String> {
+    Ok(read_vault(&app)?.duress_wrapped_key.is_some())
 }
 
 /// Attempts after the 3rd failure incur exponentially increasing cooldowns

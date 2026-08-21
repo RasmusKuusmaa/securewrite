@@ -76,6 +76,19 @@ fn doc_path(app: &AppHandle, is_decoy: bool, id: &str) -> Result<PathBuf, String
     Ok(documents_dir(app, is_decoy)?.join(format!("{id}.json")))
 }
 
+/// Wipes all decoy documents. Called when the duress password is (re)set,
+/// since that always mints a fresh decoy vault key - any documents already
+/// encrypted under the previous key would be permanently undecryptable
+/// garbage rather than actually being removed, if left in place.
+pub fn clear_decoy_documents(app: &AppHandle) -> Result<(), String> {
+    let dir = documents_dir(app, true)?;
+    for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn encrypt_payload(key: &[u8], payload: &DocPayload) -> Result<(String, String), String> {
     let plaintext = serde_json::to_vec(payload).map_err(|e| e.to_string())?;
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
