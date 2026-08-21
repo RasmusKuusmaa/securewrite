@@ -55,6 +55,15 @@ export default function Editor() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Auto-mask when the window loses focus (alt-tab away) as a safety net -
+  // always on, since re-revealing is a single click/shortcut away and
+  // costs nothing to leave enabled.
+  useEffect(() => {
+    const handleBlur = () => setMasked(true);
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, []);
+
   const syncOverlayScroll = () => {
     if (overlayRef.current && textareaRef.current) {
       overlayRef.current.scrollTop = textareaRef.current.scrollTop;
