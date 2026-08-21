@@ -6,6 +6,7 @@ import SetupFlow from "./components/SetupFlow";
 import UnlockScreen from "./components/UnlockScreen";
 import { useDocuments } from "./store/useDocuments";
 import { useVault } from "./store/useVault";
+import { useSettings } from "./store/useSettings";
 import "./App.css";
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
 
   useEffect(() => {
     checkStatus();
+    useSettings.getState().load();
   }, [checkStatus]);
 
   useEffect(() => {

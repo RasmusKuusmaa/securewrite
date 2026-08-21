@@ -1,5 +1,6 @@
 mod crypto;
 mod documents;
+mod settings;
 
 use crypto::VaultKeyState;
 use std::sync::Mutex;
@@ -21,6 +22,8 @@ pub fn run() {
             documents::save_document,
             documents::rename_document,
             documents::delete_document,
+            settings::get_settings,
+            settings::save_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
