@@ -64,6 +64,17 @@ function App() {
   }, [unlocked]);
 
   useEffect(() => {
+    if (!unlocked) return;
+    const handleBlur = () => {
+      if (useSettings.getState().lockOnBlur) {
+        useVault.getState().lock();
+      }
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, [unlocked]);
+
+  useEffect(() => {
     const win = getCurrentWindow();
     const unlisten = win.onCloseRequested(async (event) => {
       event.preventDefault();
