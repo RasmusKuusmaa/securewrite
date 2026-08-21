@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSettings } from "../store/useSettings";
 
 interface FlowModeDialogProps {
@@ -13,6 +13,14 @@ export default function FlowModeDialog({ onConfirm, onCancel }: FlowModeDialogPr
 
   const [pauseSeconds, setPauseSeconds] = useState(flowPauseSeconds);
   const [hardcore, setHardcore] = useState(flowHardcore);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onCancel]);
 
   const handleConfirm = async () => {
     await update({ flowPauseSeconds: pauseSeconds, flowHardcore: hardcore });

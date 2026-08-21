@@ -74,13 +74,23 @@ export default function SearchBar({ textareaRef, content, onClose }: SearchBarPr
       <span className="search-count">
         {matches.length > 0 ? `${matchIndex + 1}/${matches.length}` : query ? "0/0" : ""}
       </span>
-      <button type="button" onClick={() => goTo(matchIndex - 1)} disabled={matches.length === 0}>
+      <button
+        type="button"
+        title="Previous match (Shift+Enter)"
+        onClick={() => goTo(matchIndex - 1)}
+        disabled={matches.length === 0}
+      >
         ↑
       </button>
-      <button type="button" onClick={() => goTo(matchIndex + 1)} disabled={matches.length === 0}>
+      <button
+        type="button"
+        title="Next match (Enter)"
+        onClick={() => goTo(matchIndex + 1)}
+        disabled={matches.length === 0}
+      >
         ↓
       </button>
-      <button type="button" onClick={onClose}>
+      <button type="button" title="Close find (Esc)" onClick={onClose}>
         ✕
       </button>
     </div>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useSettings } from "../store/useSettings";
 import { useVault } from "../store/useVault";
 import DuressPasswordSetup from "./DuressPasswordSetup";
@@ -11,6 +12,14 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const lockOnBlur = useSettings((s) => s.lockOnBlur);
   const update = useSettings((s) => s.update);
   const isDecoy = useVault((s) => s.isDecoy);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   return (
     <div className="settings-overlay" onClick={onClose}>

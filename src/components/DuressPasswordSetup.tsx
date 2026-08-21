@@ -35,6 +35,7 @@ export default function DuressPasswordSetup() {
       await setupDuressPassword(password);
       setConfigured(true);
       setJustSaved(true);
+      window.setTimeout(() => setJustSaved(false), 4000);
       setPassword("");
       setConfirm("");
       setExpanded(false);
