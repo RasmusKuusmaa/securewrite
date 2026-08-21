@@ -1,4 +1,6 @@
 import { useSettings } from "../store/useSettings";
+import { useVault } from "../store/useVault";
+import DuressPasswordSetup from "./DuressPasswordSetup";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -8,6 +10,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const idleTimeoutMinutes = useSettings((s) => s.idleTimeoutMinutes);
   const lockOnBlur = useSettings((s) => s.lockOnBlur);
   const update = useSettings((s) => s.update);
+  const isDecoy = useVault((s) => s.isDecoy);
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -41,6 +44,8 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update({ lockOnBlur: e.target.checked })}
           />
         </label>
+
+        {!isDecoy && <DuressPasswordSetup />}
       </div>
     </div>
   );

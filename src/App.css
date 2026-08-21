@@ -355,6 +355,34 @@ textarea {
   justify-content: flex-start;
 }
 
+.duress-section {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.duress-status {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.duress-hint {
+  font-size: 0.78rem;
+}
+
+.duress-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.duress-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* Auth screens (setup / unlock) */
 
 .auth-screen {
