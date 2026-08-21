@@ -90,7 +90,14 @@ function App() {
     const win = getCurrentWindow();
     const unlisten = win.onCloseRequested(async (event) => {
       event.preventDefault();
-      await useDocuments.getState().saveActive();
+      // Route quit through the same path as a manual lock so the vault key
+      // and cached plaintext are explicitly zeroized/dropped before the
+      // process tears down, rather than relying on OS reclaim timing.
+      if (useVault.getState().unlocked) {
+        await useVault.getState().lock();
+      } else {
+        await useDocuments.getState().saveActive();
+      }
       await win.destroy();
     });
     return () => {
