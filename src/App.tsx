@@ -35,6 +35,35 @@ function App() {
   }, [unlocked, docsInit]);
 
   useEffect(() => {
+    if (!unlocked) return;
+
+    let lastActivity = Date.now();
+    const markActive = () => {
+      lastActivity = Date.now();
+    };
+    const activityEvents: (keyof WindowEventMap)[] = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "wheel",
+      "touchstart",
+    ];
+    activityEvents.forEach((evt) => window.addEventListener(evt, markActive));
+
+    const interval = window.setInterval(() => {
+      const timeoutMs = useSettings.getState().idleTimeoutMinutes * 60 * 1000;
+      if (Date.now() - lastActivity >= timeoutMs) {
+        useVault.getState().lock();
+      }
+    }, 15000);
+
+    return () => {
+      activityEvents.forEach((evt) => window.removeEventListener(evt, markActive));
+      window.clearInterval(interval);
+    };
+  }, [unlocked]);
+
+  useEffect(() => {
     const win = getCurrentWindow();
     const unlisten = win.onCloseRequested(async (event) => {
       event.preventDefault();
