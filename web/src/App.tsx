@@ -17,15 +17,25 @@ function App() {
   const docsInit = useDocuments((s) => s.init);
   const docsLoading = useDocuments((s) => s.loading);
 
-  // See SetupFlow: setup_vault() flips `initialized`/`unlocked` before the
-  // user has acknowledged the recovery key, so completion is tracked here
-  // rather than derived from the store.
-  const [setupAcknowledged, setSetupAcknowledged] = useState(false);
+  // setup_vault() flips the store's `initialized` flag the instant it
+  // resolves - before the user has seen the recovery-key screen - so whether
+  // to show SetupFlow is decided once, right when the initial loading check
+  // resolves, and latched in state (null = "not decided yet"). Re-deriving
+  // this from `initialized` on every render would un-mount SetupFlow the
+  // moment setup() completes, skipping straight past the recovery key
+  // display.
+  const [showSetupFlow, setShowSetupFlow] = useState<boolean | null>(null);
 
   useEffect(() => {
     checkStatus();
     useSettings.getState().load();
   }, [checkStatus]);
+
+  useEffect(() => {
+    if (!vaultLoading && showSetupFlow === null) {
+      setShowSetupFlow(!initialized);
+    }
+  }, [vaultLoading, initialized, showSetupFlow]);
 
   useEffect(() => {
     if (unlocked) {
@@ -111,12 +121,12 @@ function App() {
     };
   }, []);
 
-  if (vaultLoading) {
+  if (vaultLoading || showSetupFlow === null) {
     return <div className="app-loading">Loading...</div>;
   }
 
-  if (!initialized && !setupAcknowledged) {
-    return <SetupFlow onDone={() => setSetupAcknowledged(true)} />;
+  if (showSetupFlow) {
+    return <SetupFlow onDone={() => setShowSetupFlow(false)} />;
   }
 
   if (!unlocked) {
