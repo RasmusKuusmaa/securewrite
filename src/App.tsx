@@ -100,15 +100,24 @@ function App() {
     const win = getCurrentWindow();
     const unlisten = win.onCloseRequested(async (event) => {
       event.preventDefault();
-      // Route quit through the same path as a manual lock so the vault key
-      // and cached plaintext are explicitly zeroized/dropped before the
-      // process tears down, rather than relying on OS reclaim timing.
-      if (useVault.getState().unlocked) {
-        await useVault.getState().lock();
-      } else {
-        await useDocuments.getState().saveActive();
+      try {
+        // Route quit through the same path as a manual lock so the vault key
+        // and cached plaintext are explicitly zeroized/dropped before the
+        // process tears down, rather than relying on OS reclaim timing.
+        if (useVault.getState().unlocked) {
+          await useVault.getState().lock();
+        } else {
+          await useDocuments.getState().saveActive();
+        }
+      } catch (err) {
+        // preventDefault() already blocked the native close - if cleanup
+        // throws (e.g. an auto-lock race invalidates the save mid-flight)
+        // and we don't still destroy() below, the window is stuck open with
+        // no way to close it from the OS.
+        console.error("Error during close cleanup, closing anyway:", err);
+      } finally {
+        await win.destroy();
       }
-      await win.destroy();
     });
     return () => {
       unlisten.then((f) => f());
