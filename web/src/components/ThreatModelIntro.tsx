@@ -1,5 +1,9 @@
 interface ThreatModelIntroProps {
   onContinue: () => void;
+  // "local" (default): pure IndexedDB vault, nothing leaves the device.
+  // "sync": account mode backed by ../../server - the closing paragraph below
+  // has to say so, since "nothing is sent anywhere" would just be false there.
+  mode?: "local" | "sync";
 }
 
 // This is the browser build's threat model, not the desktop app's - deliberately
@@ -7,7 +11,7 @@ interface ThreatModelIntroProps {
 // can't (excluding the window from screen capture, suppressing taskbar
 // thumbnails, Rust-level key zeroization). None of that applies here, so this
 // screen says so plainly rather than borrowing the desktop app's stronger claims.
-export default function ThreatModelIntro({ onContinue }: ThreatModelIntroProps) {
+export default function ThreatModelIntro({ onContinue, mode = "local" }: ThreatModelIntroProps) {
   return (
     <div className="auth-screen">
       <div className="auth-card">
@@ -33,9 +37,21 @@ export default function ThreatModelIntro({ onContinue }: ThreatModelIntroProps) 
         <p className="auth-subtitle">
           Unlike the desktop version, a browser tab can't be excluded from screen capture or hide
           from a taskbar preview - closing the tab doesn't guarantee this device's memory is
-          scrubbed the way quitting the desktop app does. Your notes stay in this browser's local
-          storage on this device only - nothing is sent anywhere.
+          scrubbed the way quitting the desktop app does.
         </p>
+        {mode === "local" ? (
+          <p className="auth-subtitle">
+            Your notes stay in this browser's local storage on this device only - nothing is sent
+            anywhere.
+          </p>
+        ) : (
+          <p className="auth-subtitle">
+            This account syncs your notes through a server. That server sees your username, when
+            you sign in, and encrypted blobs it can't read - it never sees your password, your
+            recovery key, or a single word of what you write, and it can't derive the key that
+            would let it.
+          </p>
+        )}
         <button type="button" className="primary-button" onClick={onContinue}>
           I understand, continue
         </button>
