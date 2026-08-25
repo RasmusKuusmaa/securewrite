@@ -3,12 +3,19 @@ import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
 import SetupFlow from "./components/SetupFlow";
 import UnlockScreen from "./components/UnlockScreen";
+import ModeSelect from "./components/ModeSelect";
+import SyncAuthFlow from "./components/SyncAuthFlow";
+import SyncUnlockScreen from "./components/SyncUnlockScreen";
 import { useDocuments } from "./store/useDocuments";
 import { useVault } from "./store/useVault";
 import { useSettings } from "./store/useSettings";
+import { useBackendMode } from "./store/useBackendMode";
 import "./App.css";
 
 function App() {
+  const mode = useBackendMode((s) => s.mode);
+  const chooseMode = useBackendMode((s) => s.choose);
+
   const vaultLoading = useVault((s) => s.loading);
   const initialized = useVault((s) => s.initialized);
   const unlocked = useVault((s) => s.unlocked);
@@ -27,9 +34,17 @@ function App() {
   const [showSetupFlow, setShowSetupFlow] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!mode) return;
     checkStatus();
     useSettings.getState().load();
-  }, [checkStatus]);
+  }, [mode, checkStatus]);
+
+  // Re-derive showSetupFlow whenever the backend mode changes (e.g. the user
+  // switched from local to sync or vice versa) instead of staying latched on
+  // whichever mode's decision was made first.
+  useEffect(() => {
+    setShowSetupFlow(null);
+  }, [mode]);
 
   useEffect(() => {
     if (!vaultLoading && showSetupFlow === null) {
@@ -121,16 +136,24 @@ function App() {
     };
   }, []);
 
+  if (!mode) {
+    return <ModeSelect onChoose={chooseMode} />;
+  }
+
   if (vaultLoading || showSetupFlow === null) {
     return <div className="app-loading">Loading...</div>;
   }
 
   if (showSetupFlow) {
-    return <SetupFlow onDone={() => setShowSetupFlow(false)} />;
+    return mode === "sync" ? (
+      <SyncAuthFlow onDone={() => setShowSetupFlow(false)} />
+    ) : (
+      <SetupFlow onDone={() => setShowSetupFlow(false)} />
+    );
   }
 
   if (!unlocked) {
-    return <UnlockScreen />;
+    return mode === "sync" ? <SyncUnlockScreen /> : <UnlockScreen />;
   }
 
   if (docsLoading) {

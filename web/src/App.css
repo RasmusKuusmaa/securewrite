@@ -492,6 +492,17 @@ textarea {
   cursor: pointer;
 }
 
+.mode-select-hint {
+  margin-top: -0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.mode-select-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
 .link-button {
   align-self: center;
   border: none;
