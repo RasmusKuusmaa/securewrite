@@ -3,18 +3,27 @@
 Browser build of Private Writer, for writing privately on a machine where you
 can't (or don't want to) install the desktop app — e.g. a work computer. Same
 encryption (Argon2id + AES-256-GCM), same masked view, same recovery-key flow
-as the desktop app, but running entirely client-side against IndexedDB instead
-of a Rust backend and the filesystem.
+as the desktop app.
 
 **This is a separate vault from the desktop app.** A password set up here does
-not unlock the desktop vault, and notes don't sync between them — everything
-stays in this browser's local storage, on this device, encrypted at rest.
+not unlock the desktop vault, and notes don't sync with it either way.
+
+On first launch you pick one of two modes (switchable later from inside the
+app, though notes don't move between them):
+
+- **Local-only** — everything stays in this browser's IndexedDB, on this
+  device, encrypted at rest. No server, no network calls, works offline.
+- **Synced account** — backed by `../server`, so your vault follows you
+  across browsers/devices. The server only ever sees your username, login
+  timing, and opaque encrypted blobs — see `server/README.md` and
+  `server/src/schema.sql` for how the zero-knowledge split works. Requires
+  `server/` running somewhere reachable (see that directory's README).
 
 Read the in-app "Before you start writing" screen (or `src/components/ThreatModelIntro.tsx`)
-before relying on this for anything sensitive — a browser tab has real gaps
-the desktop app doesn't (no screen-capture exclusion, no taskbar hardening,
-and it can't see or defend against corporate endpoint-monitoring software on
-a managed work computer).
+before relying on either mode for anything sensitive — a browser tab has real
+gaps the desktop app doesn't (no screen-capture exclusion, no taskbar
+hardening, and it can't see or defend against corporate endpoint-monitoring
+software on a managed work computer).
 
 ## Local development
 
@@ -23,14 +32,28 @@ npm install
 npm run dev
 ```
 
+Vite proxies `/api` to `http://localhost:8787` (see `vite.config.ts`), so to
+test synced-account mode, also run the server alongside it:
+
+```
+cd ../server
+npm install
+cp .env.example .env   # fill in DATABASE_URL and SESSION_SECRET
+npm run dev
+```
+
+Local-only mode needs none of this.
+
 ## Building
 
 ```
 npm run build
 ```
 
-Output goes to `dist/` — a fully static site (HTML/CSS/JS + a WASM Argon2
-worker chunk). No server-side component, no network calls at runtime.
+Output goes to `dist/` — a static site (HTML/CSS/JS + a WASM Argon2 worker
+chunk). Local-only mode makes no network calls at runtime; synced-account mode
+talks to whatever `../server` instance it's pointed at (same-origin in
+production — see that directory's README).
 
 ## Deploying somewhere you can reach from a work browser
 
@@ -72,3 +95,9 @@ Options, roughly in order of convenience:
 - Argon2id runs in `src/lib/argon2Worker.ts`, a dedicated Web Worker — moving
   it off the main thread was necessary, not optional; without it, every
   unlock attempt freezes the tab for several seconds.
+- `src/lib/syncVaultService.ts` and `syncDocumentsService.ts` are the
+  synced-account counterparts of `vaultService.ts`/`documentsService.ts`,
+  backed by `../server`'s API instead of IndexedDB, but reusing `crypto.ts`
+  as-is. `src/lib/backend.ts` picks between `invoke.ts` (local) and
+  `syncInvoke.ts` (sync) based on `src/store/useBackendMode.ts`'s persisted
+  choice — that's the only import the stores need to know about.
