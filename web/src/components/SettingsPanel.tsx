@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useSettings } from "../store/useSettings";
 import { useVault } from "../store/useVault";
+import { useBackendMode } from "../store/useBackendMode";
 import DuressPasswordSetup from "./DuressPasswordSetup";
 
 interface SettingsPanelProps {
@@ -12,6 +13,9 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const lockOnBlur = useSettings((s) => s.lockOnBlur);
   const update = useSettings((s) => s.update);
   const isDecoy = useVault((s) => s.isDecoy);
+  const username = useVault((s) => s.username);
+  const logout = useVault((s) => s.logout);
+  const isSyncMode = useBackendMode((s) => s.mode) === "sync";
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -53,6 +57,22 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update({ lockOnBlur: e.target.checked })}
           />
         </label>
+
+        {isSyncMode && !isDecoy && (
+          <div className="settings-row">
+            <span>Signed in as {username}</span>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={async () => {
+                await logout();
+                onClose();
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
 
         {!isDecoy && <DuressPasswordSetup />}
       </div>
