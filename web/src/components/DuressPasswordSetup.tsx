@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "../lib/invoke";
+import { invoke } from "../lib/backend";
 import { useVault } from "../store/useVault";
 
 // Rendered only from SettingsPanel, and only when !isDecoy - see

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { invoke } from "../lib/invoke";
+import { invoke } from "../lib/backend";
 import type { Document, DocumentMeta } from "../types";
 
 interface DocumentsState {
