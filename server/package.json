@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run build --prefix ../web && tsc",
+    "build": "npm run build --prefix ../web && tsc && node -e \"require('fs').copyFileSync('src/schema.sql','dist/schema.sql')\"",
     "start": "node dist/index.js"
   },
   "dependencies": {
