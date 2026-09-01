@@ -36,6 +36,22 @@ jobs:
       - name: Build Tauri app (deb + AppImage)
         run: npm run tauri build -- --bundles deb,appimage
 
+      - name: Verify the release binary actually launches
+        run: |
+          sudo apt-get install -y -qq xvfb
+          BIN="$(find src-tauri/target/release -maxdepth 1 -type f -executable -name 'secure-write')"
+          xvfb-run -a --server-args='-screen 0 1024x768x24' timeout 10 "$BIN" &
+          APP_PID=$!
+          sleep 5
+          if ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "binary exited before the 10s timeout - treating as a launch failure"
+            wait "$APP_PID"
+            exit 1
+          fi
+          echo "binary is still running 5s after launch - OK"
+          kill "$APP_PID"
+          wait "$APP_PID" || true
+
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
