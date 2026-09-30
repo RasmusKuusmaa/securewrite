@@ -2,9 +2,13 @@
 // directory Rust's `fs` calls read/write in documents.rs/crypto.rs/settings.rs.
 // Object stores: "meta" holds the singleton vault + settings records,
 // "documents"/"documents_decoy" hold one encrypted record per note, mirroring
-// the two on-disk directories `documents_dir(is_decoy)` picks between.
+// the two on-disk directories `documents_dir(is_decoy)` picks between, and
+// "journal"/"journal_decoy" do the same for journal entries (v2).
 const DB_NAME = "private-writer";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+export type RecordStore = "documents" | "documents_decoy" | "journal" | "journal_decoy";
+const RECORD_STORES: RecordStore[] = ["documents", "documents_decoy", "journal", "journal_decoy"];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -17,11 +21,10 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("meta")) {
         db.createObjectStore("meta", { keyPath: "key" });
       }
-      if (!db.objectStoreNames.contains("documents")) {
-        db.createObjectStore("documents", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("documents_decoy")) {
-        db.createObjectStore("documents_decoy", { keyPath: "id" });
+      for (const name of RECORD_STORES) {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name, { keyPath: "id" });
+        }
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -50,20 +53,20 @@ export async function putMeta<T>(key: string, value: T): Promise<void> {
   await promisify(tx.objectStore("meta").put({ key, value }));
 }
 
-export async function docStoreGetAll<T>(storeName: "documents" | "documents_decoy"): Promise<T[]> {
+export async function docStoreGetAll<T>(storeName: RecordStore): Promise<T[]> {
   const db = await openDb();
   const tx = db.transaction(storeName, "readonly");
   return promisify(tx.objectStore(storeName).getAll()) as Promise<T[]>;
 }
 
-export async function docStoreGet<T>(storeName: "documents" | "documents_decoy", id: string): Promise<T | undefined> {
+export async function docStoreGet<T>(storeName: RecordStore, id: string): Promise<T | undefined> {
   const db = await openDb();
   const tx = db.transaction(storeName, "readonly");
   return promisify(tx.objectStore(storeName).get(id)) as Promise<T | undefined>;
 }
 
 export async function docStorePut<T extends { id: string }>(
-  storeName: "documents" | "documents_decoy",
+  storeName: RecordStore,
   record: T,
 ): Promise<void> {
   const db = await openDb();
@@ -71,13 +74,13 @@ export async function docStorePut<T extends { id: string }>(
   await promisify(tx.objectStore(storeName).put(record));
 }
 
-export async function docStoreDelete(storeName: "documents" | "documents_decoy", id: string): Promise<void> {
+export async function docStoreDelete(storeName: RecordStore, id: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(storeName, "readwrite");
   await promisify(tx.objectStore(storeName).delete(id));
 }
 
-export async function docStoreClear(storeName: "documents" | "documents_decoy"): Promise<void> {
+export async function docStoreClear(storeName: RecordStore): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(storeName, "readwrite");
   await promisify(tx.objectStore(storeName).clear());

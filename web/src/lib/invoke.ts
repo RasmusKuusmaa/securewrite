@@ -1,6 +1,8 @@
 import * as vault from "./vaultService";
 import * as documents from "./documentsService";
 import * as settings from "./settingsService";
+import * as journal from "./journalService";
+import type { JournalEntry } from "../types";
 
 // Stand-in for @tauri-apps/api/core's invoke(), dispatching by the same
 // command names the Rust side used. This lets the zustand stores (useVault,
@@ -34,6 +36,12 @@ export async function invoke<T>(cmd: string, args: Record<string, unknown> = {})
       return documents.renameDocument(args.id as string, args.title as string) as Promise<T>;
     case "delete_document":
       return documents.deleteDocument(args.id as string) as Promise<T>;
+    case "list_journal_entries":
+      return journal.listJournalEntries() as Promise<T>;
+    case "save_journal_entry":
+      return journal.saveJournalEntry(args.entry as JournalEntry) as Promise<T>;
+    case "delete_journal_entry":
+      return journal.deleteJournalEntry(args.id as string) as Promise<T>;
     case "get_settings":
       return settings.getSettings() as Promise<T>;
     case "save_settings":

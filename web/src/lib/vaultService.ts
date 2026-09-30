@@ -122,6 +122,7 @@ export async function setupDuressPassword(duressPassword: string): Promise<void>
   vault.duressWrappedKey = duressWrappedKey;
   await writeVault(vault);
   await docStoreClear("documents_decoy");
+  await docStoreClear("journal_decoy");
 }
 
 export async function hasDuressConfigured(): Promise<boolean> {
