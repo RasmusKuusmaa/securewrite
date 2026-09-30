@@ -8,6 +8,7 @@ import { initSchema } from "./db.js";
 import { loadSession } from "./session.js";
 import authRoutes from "./routes/auth.js";
 import documentsRoutes from "./routes/documents.js";
+import journalRoutes from "./routes/journal.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 8787;
@@ -27,6 +28,7 @@ app.use(loadSession);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
+app.use("/api/journal", journalRoutes);
 
 if (process.env.NODE_ENV === "production") {
   const here = path.dirname(fileURLToPath(import.meta.url));

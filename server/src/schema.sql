@@ -44,6 +44,18 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE INDEX IF NOT EXISTS documents_user_idx ON documents(user_id, is_decoy);
 
+-- Same opaque-ciphertext shape as documents. Ids are client-generated so an
+-- entry can be upserted in one round trip.
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  is_decoy BOOLEAN NOT NULL,
+  nonce TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS journal_entries_user_idx ON journal_entries(user_id, is_decoy);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
