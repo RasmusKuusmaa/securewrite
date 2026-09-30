@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useDocuments } from "./useDocuments";
+import { useJournal } from "./useJournal";
 
 interface VaultStatus {
   initialized: boolean;
@@ -57,6 +58,7 @@ export const useVault = create<VaultState>((set) => ({
     await useDocuments.getState().saveActive();
     await invoke("lock_vault");
     useDocuments.getState().reset();
+    useJournal.getState().reset();
     set({ unlocked: false, isDecoy: false });
   },
 
