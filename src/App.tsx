@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
+import JournalView from "./components/journal/JournalView";
 import SetupFlow from "./components/SetupFlow";
 import UnlockScreen from "./components/UnlockScreen";
 import { useDocuments } from "./store/useDocuments";
+import { useJournal } from "./store/useJournal";
 import { useVault } from "./store/useVault";
 import { useSettings } from "./store/useSettings";
 import "./App.css";
@@ -17,6 +19,7 @@ function App() {
 
   const docsInit = useDocuments((s) => s.init);
   const docsLoading = useDocuments((s) => s.loading);
+  const view = useJournal((s) => s.view);
 
   // setup_vault() flips the store's `initialized` flag the instant it
   // resolves - before the user has seen the recovery-key screen - so whether
@@ -143,7 +146,7 @@ function App() {
   return (
     <div className="app">
       <Sidebar />
-      <Editor />
+      {view === "journal" ? <JournalView /> : <Editor />}
     </div>
   );
 }

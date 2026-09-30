@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useDocuments } from "../store/useDocuments";
 import { useVault } from "../store/useVault";
+import { useJournal } from "../store/useJournal";
 import SettingsPanel from "./SettingsPanel";
 
 export default function Sidebar() {
@@ -11,6 +12,8 @@ export default function Sidebar() {
   const renameDocument = useDocuments((s) => s.renameDocument);
   const deleteDocument = useDocuments((s) => s.deleteDocument);
   const lock = useVault((s) => s.lock);
+  const view = useJournal((s) => s.view);
+  const setView = useJournal((s) => s.setView);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -38,7 +41,10 @@ export default function Sidebar() {
           <button
             type="button"
             className="icon-button"
-            onClick={() => createDocument()}
+            onClick={() => {
+              createDocument();
+              setView("documents");
+            }}
             title="New document"
           >
             +
@@ -62,13 +68,38 @@ export default function Sidebar() {
         </div>
       </div>
 
+      <div className="view-switch" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "documents"}
+          className={view === "documents" ? "active" : ""}
+          onClick={() => setView("documents")}
+        >
+          Write
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "journal"}
+          className={view === "journal" ? "active" : ""}
+          onClick={() => setView("journal")}
+        >
+          Journal
+        </button>
+      </div>
+
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       <ul className="doc-list">
         {documents.map((doc) => (
           <li
             key={doc.id}
-            className={`doc-item ${activeDoc?.id === doc.id ? "active" : ""}`}
-            onClick={() => editingId !== doc.id && openDocument(doc.id)}
+            className={`doc-item ${view === "documents" && activeDoc?.id === doc.id ? "active" : ""}`}
+            onClick={() => {
+              if (editingId === doc.id) return;
+              openDocument(doc.id);
+              setView("documents");
+            }}
           >
             {editingId === doc.id ? (
               <input
