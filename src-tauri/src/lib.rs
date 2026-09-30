@@ -1,5 +1,6 @@
 mod crypto;
 mod documents;
+mod journal;
 mod settings;
 
 use crypto::VaultKeyState;
@@ -24,6 +25,9 @@ pub fn run() {
             documents::save_document,
             documents::rename_document,
             documents::delete_document,
+            journal::list_journal_entries,
+            journal::save_journal_entry,
+            journal::delete_journal_entry,
             settings::get_settings,
             settings::save_settings,
         ])

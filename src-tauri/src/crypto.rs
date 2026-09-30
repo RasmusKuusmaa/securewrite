@@ -266,6 +266,7 @@ pub fn setup_duress_password(
     vault.duress_wrapped_key = Some(duress_wrapped_key);
     write_vault(&app, &vault)?;
     crate::documents::clear_decoy_documents(&app)?;
+    crate::journal::clear_decoy_journal(&app)?;
 
     Ok(())
 }

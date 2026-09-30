@@ -2,6 +2,7 @@ use crate::crypto::{get_vault_context, VaultKeyState};
 use aes_gcm::aead::{Aead, KeyInit, OsRng as AeadOsRng};
 use aes_gcm::{Aes256Gcm, AeadCore, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -51,7 +52,7 @@ struct EncryptedDocFile {
     ciphertext: String,
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -89,7 +90,8 @@ pub fn clear_decoy_documents(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn encrypt_payload(key: &[u8], payload: &DocPayload) -> Result<(String, String), String> {
+/// Shared with journal.rs - any serializable payload, same AES-256-GCM scheme.
+pub(crate) fn encrypt_payload<T: Serialize>(key: &[u8], payload: &T) -> Result<(String, String), String> {
     let plaintext = serde_json::to_vec(payload).map_err(|e| e.to_string())?;
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce = Aes256Gcm::generate_nonce(&mut AeadOsRng);
@@ -99,7 +101,11 @@ fn encrypt_payload(key: &[u8], payload: &DocPayload) -> Result<(String, String),
     Ok((STANDARD.encode(nonce), STANDARD.encode(ciphertext)))
 }
 
-fn decrypt_payload(key: &[u8], nonce_b64: &str, ciphertext_b64: &str) -> Result<DocPayload, String> {
+pub(crate) fn decrypt_payload<T: DeserializeOwned>(
+    key: &[u8],
+    nonce_b64: &str,
+    ciphertext_b64: &str,
+) -> Result<T, String> {
     let nonce_bytes = STANDARD.decode(nonce_b64).map_err(|e| e.to_string())?;
     let ciphertext = STANDARD
         .decode(ciphertext_b64)
@@ -115,7 +121,7 @@ fn decrypt_payload(key: &[u8], nonce_b64: &str, ciphertext_b64: &str) -> Result<
 fn read_doc(path: &PathBuf, key: &[u8]) -> Result<Document, String> {
     let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let enc: EncryptedDocFile = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    let payload = decrypt_payload(key, &enc.nonce, &enc.ciphertext)?;
+    let payload: DocPayload = decrypt_payload(key, &enc.nonce, &enc.ciphertext)?;
     Ok(Document {
         id: enc.id,
         title: payload.title,
@@ -246,7 +252,7 @@ mod tests {
             updated_at: 1234567890,
         };
         let (nonce, ciphertext) = encrypt_payload(&key, &payload).unwrap();
-        let decrypted = decrypt_payload(&key, &nonce, &ciphertext).unwrap();
+        let decrypted: DocPayload = decrypt_payload(&key, &nonce, &ciphertext).unwrap();
         assert_eq!(decrypted.title, payload.title);
         assert_eq!(decrypted.content, payload.content);
         assert_eq!(decrypted.updated_at, payload.updated_at);
@@ -262,7 +268,7 @@ mod tests {
             updated_at: 0,
         };
         let (nonce, ciphertext) = encrypt_payload(&key, &payload).unwrap();
-        assert!(decrypt_payload(&wrong_key, &nonce, &ciphertext).is_err());
+        assert!(decrypt_payload::<DocPayload>(&wrong_key, &nonce, &ciphertext).is_err());
     }
 
     /// The same file-shape write_doc/read_doc produce, written to a real
@@ -312,12 +318,13 @@ mod tests {
 
         // Correct key round-trips through the real file; wrong key fails cleanly.
         let read_back: EncryptedDocFile = serde_json::from_str(&raw).unwrap();
-        let decrypted = decrypt_payload(&key, &read_back.nonce, &read_back.ciphertext).unwrap();
+        let decrypted: DocPayload =
+            decrypt_payload(&key, &read_back.nonce, &read_back.ciphertext).unwrap();
         assert_eq!(decrypted.title, payload.title);
         assert_eq!(decrypted.content, payload.content);
 
         let wrong_key = [8u8; 32];
-        let result = decrypt_payload(&wrong_key, &read_back.nonce, &read_back.ciphertext);
+        let result = decrypt_payload::<DocPayload>(&wrong_key, &read_back.nonce, &read_back.ciphertext);
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(!err.contains("My Secret Plan"));
