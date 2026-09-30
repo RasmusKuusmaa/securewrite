@@ -1,6 +1,6 @@
 import type { WrappedKey } from "./crypto";
 
-// Thin client for ../../server's /api/auth and /api/documents routes. Relative
+// Thin client for ../../server's /api/auth, /api/documents and /api/journal routes. Relative
 // paths only - dev proxies /api to the server (vite.config.ts), production
 // serves both from the same origin (server/src/index.ts) - so there's no base
 // URL and no CORS/credentials configuration needed here.
@@ -111,5 +111,17 @@ export const api = {
 
   deleteDocument(id: string): Promise<void> {
     return request(`/api/documents/${id}`, { method: "DELETE" });
+  },
+
+  listJournal(): Promise<{ id: string; nonce: string; ciphertext: string }[]> {
+    return request("/api/journal");
+  },
+
+  putJournalEntry(id: string, body: { nonce: string; ciphertext: string }): Promise<{ updatedAt: number }> {
+    return request(`/api/journal/${id}`, { method: "PUT", body: JSON.stringify(body) });
+  },
+
+  deleteJournalEntry(id: string): Promise<void> {
+    return request(`/api/journal/${id}`, { method: "DELETE" });
   },
 };
