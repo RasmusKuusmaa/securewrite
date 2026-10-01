@@ -103,6 +103,7 @@ export function formatDuration(minutes: number): string {
  * breakdown part, plus a `sub: null` "general" slice for any unallocated
  * remainder (or the whole entry, when it has no breakdown - including
  * zero-minute "done it" entries like a gym session logged without a time).
+ * Journal notes have no time and produce no segments.
  */
 export interface Segment {
   entry: JournalEntry;
@@ -115,6 +116,7 @@ export interface Segment {
 export function toSegments(entries: JournalEntry[]): Segment[] {
   const out: Segment[] = [];
   for (const entry of entries) {
+    if (entry.kind === "note") continue;
     let allocated = 0;
     for (const part of entry.parts) {
       allocated += part.minutes;
@@ -137,18 +139,41 @@ export function subKey(activity: string, sub: string | null): string {
 
 // -------------------------------------------------------------- filters
 
-export type RangePreset = "7d" | "30d" | "90d" | "week" | "month" | "year" | "all" | "custom";
+export type RangePreset =
+  | "today"
+  | "yesterday"
+  | "week"
+  | "lastweek"
+  | "7d"
+  | "month"
+  | "lastmonth"
+  | "30d"
+  | "90d"
+  | "year"
+  | "lastyear"
+  | "365d"
+  | "all"
+  | "custom";
 
 export const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "week", label: "This week" },
+  { value: "lastweek", label: "Last week" },
   { value: "7d", label: "Last 7 days" },
+  { value: "month", label: "This month" },
+  { value: "lastmonth", label: "Last month" },
   { value: "30d", label: "Last 30 days" },
   { value: "90d", label: "Last 90 days" },
-  { value: "week", label: "This week" },
-  { value: "month", label: "This month" },
   { value: "year", label: "This year" },
+  { value: "lastyear", label: "Last year" },
+  { value: "365d", label: "Last 365 days" },
   { value: "all", label: "All time" },
-  { value: "custom", label: "Custom" },
+  { value: "custom", label: "Custom range" },
 ];
+
+/** Which entry types the log/calendar show. Stats always use time entries. */
+export type ShowKind = "all" | "time" | "note";
 
 export interface JournalFilter {
   range: RangePreset;
@@ -160,28 +185,51 @@ export interface JournalFilter {
   /** subKey()s. Narrows only the activities they belong to. */
   subs: string[];
   query: string;
+  show: ShowKind;
 }
+
+export const DEFAULT_RANGE: RangePreset = "30d";
 
 export function defaultFilter(): JournalFilter {
   const today = todayStr();
-  return { range: "30d", from: addDays(today, -29), to: today, activities: [], subs: [], query: "" };
+  return { range: DEFAULT_RANGE, from: addDays(today, -29), to: today, activities: [], subs: [], query: "", show: "all" };
+}
+
+/** First day of the month `offset` months from the one containing `date`. */
+function monthStart(date: string, offset = 0): string {
+  const d = parseDateStr(date);
+  return toDateStr(new Date(d.getFullYear(), d.getMonth() + offset, 1));
 }
 
 export function resolveRange(filter: JournalFilter, entries: JournalEntry[]): { from: string; to: string } {
   const today = todayStr();
   switch (filter.range) {
+    case "today":
+      return { from: today, to: today };
+    case "yesterday":
+      return { from: addDays(today, -1), to: addDays(today, -1) };
+    case "week":
+      return { from: startOfWeek(today), to: today };
+    case "lastweek":
+      return { from: addDays(startOfWeek(today), -7), to: addDays(startOfWeek(today), -1) };
     case "7d":
       return { from: addDays(today, -6), to: today };
+    case "month":
+      return { from: monthStart(today), to: today };
+    case "lastmonth":
+      return { from: monthStart(today, -1), to: addDays(monthStart(today), -1) };
     case "30d":
       return { from: addDays(today, -29), to: today };
     case "90d":
       return { from: addDays(today, -89), to: today };
-    case "week":
-      return { from: startOfWeek(today), to: today };
-    case "month":
-      return { from: today.slice(0, 8) + "01", to: today };
     case "year":
       return { from: today.slice(0, 5) + "01-01", to: today };
+    case "lastyear": {
+      const y = Number(today.slice(0, 4)) - 1;
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    }
+    case "365d":
+      return { from: addDays(today, -364), to: today };
     case "all": {
       if (entries.length === 0) return { from: today, to: today };
       let min = entries[0].date;
@@ -197,9 +245,56 @@ export function resolveRange(filter: JournalFilter, entries: JournalEntry[]): { 
   }
 }
 
+/**
+ * The days averages are divided by: the selected range, but never before
+ * the first day anything was tracked (so starting yesterday doesn't spread
+ * yesterday's 4h over 30 empty days) and never past today (future days
+ * haven't happened yet). `days` is 0 when the range lies wholly outside.
+ */
+export interface CountingWindow {
+  from: string;
+  to: string;
+  days: number;
+  /** The range as selected, before clipping. */
+  rangeFrom: string;
+  rangeTo: string;
+  /** First day with a time entry, across everything (filters ignored). */
+  trackingStart: string | null;
+  clippedStart: boolean;
+}
+
+export function countingWindow(filter: JournalFilter, entries: JournalEntry[]): CountingWindow {
+  const range = resolveRange(filter, entries);
+  return clipWindow(range.from, range.to, trackingStartOf(entries));
+}
+
+export function trackingStartOf(entries: JournalEntry[]): string | null {
+  let first: string | null = null;
+  for (const e of entries) if (e.kind !== "note" && (first === null || e.date < first)) first = e.date;
+  return first;
+}
+
+function clipWindow(rangeFrom: string, rangeTo: string, trackingStart: string | null): CountingWindow {
+  const today = todayStr();
+  const from = trackingStart && trackingStart > rangeFrom ? trackingStart : rangeFrom;
+  const to = rangeTo > today ? today : rangeTo;
+  const days = trackingStart === null || from > to ? 0 : daysInclusive(from, to);
+  return { from, to, days, rangeFrom, rangeTo, trackingStart, clippedStart: from !== rangeFrom };
+}
+
+/** The equally long stretch right before `w`, clipped the same way - for
+ * "vs previous period" deltas. Null when tracking hadn't started yet. */
+export function previousWindow(w: CountingWindow): CountingWindow | null {
+  if (w.days === 0) return null;
+  const prevTo = addDays(w.from, -1);
+  const prev = clipWindow(addDays(prevTo, -(w.days - 1)), prevTo, w.trackingStart);
+  return prev.days > 0 ? prev : null;
+}
+
 function entryMatchesQuery(entry: JournalEntry, q: string): boolean {
   if (!q) return true;
   if (entry.note.toLowerCase().includes(q) || entry.activity.toLowerCase().includes(q)) return true;
+  if (entry.title.toLowerCase().includes(q)) return true;
   return entry.parts.some((p) => p.name.toLowerCase().includes(q));
 }
 
@@ -208,6 +303,7 @@ function entryMatchesQuery(entry: JournalEntry, q: string): boolean {
  * window on top of this, the log and stats add resolveRange()'s window.
  */
 export function filterSegments(segments: Segment[], filter: JournalFilter): Segment[] {
+  if (filter.show === "note") return [];
   const q = filter.query.trim().toLowerCase();
   const acts = new Set(filter.activities);
   const subs = new Set(filter.subs);
@@ -219,12 +315,20 @@ export function filterSegments(segments: Segment[], filter: JournalFilter): Segm
   });
 }
 
+/** Journal notes the log/calendar should show. Notes have no activity, so
+ * any activity filter hides them - that filter asks about time spent. */
+export function filterNotes(entries: JournalEntry[], filter: JournalFilter): JournalEntry[] {
+  if (filter.show === "time" || filter.activities.length > 0 || filter.subs.length > 0) return [];
+  const q = filter.query.trim().toLowerCase();
+  return entries.filter((e) => e.kind === "note" && entryMatchesQuery(e, q));
+}
+
 export function inRange(segments: Segment[], from: string, to: string): Segment[] {
   return segments.filter((s) => s.date >= from && s.date <= to);
 }
 
 export function isFilterNarrowed(filter: JournalFilter): boolean {
-  return filter.activities.length > 0 || filter.subs.length > 0 || filter.query.trim() !== "";
+  return filter.activities.length > 0 || filter.subs.length > 0 || filter.query.trim() !== "" || filter.show !== "all";
 }
 
 // --------------------------------------------------------------- catalog
@@ -246,6 +350,7 @@ export function buildCatalog(entries: JournalEntry[]): ActivityInfo[] {
   const first = new Map<string, [string, number]>();
   const subUse = new Map<string, Map<string, number>>();
   for (const e of entries) {
+    if (e.kind === "note") continue;
     const seen = first.get(e.activity);
     if (!seen || e.date < seen[0] || (e.date === seen[0] && e.createdAt < seen[1])) {
       first.set(e.activity, [e.date, e.createdAt]);
@@ -273,133 +378,228 @@ export function colorForSlot(slot: number): string {
 
 // ----------------------------------------------------------------- stats
 
-export interface SubStat {
-  name: string | null;
-  minutes: number;
-  days: number;
+export function isWeekend(date: string): boolean {
+  return weekdayIndex(date) >= 5;
 }
 
-export interface ActivityStat {
-  activity: string;
+/** How many of each weekday (Mon..Sun) a window contains. */
+function weekdayCounts(from: string, days: number): number[] {
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  const first = weekdayIndex(from);
+  for (let i = 0; i < 7; i++) counts[(first + i) % 7] = Math.floor(days / 7) + (i < days % 7 ? 1 : 0);
+  return counts;
+}
+
+/** Averages over a set of calendar days, and over just the days with data. */
+export interface Avg {
   minutes: number;
   days: number;
+  loggedDays: number;
+  /** minutes per calendar day in the group */
+  perDay: number;
+  /** minutes per logged day in the group */
+  perLoggedDay: number;
+}
+
+function avg(minutes: number, days: number, loggedDays: number): Avg {
+  return {
+    minutes,
+    days,
+    loggedDays,
+    perDay: days ? minutes / days : 0,
+    perLoggedDay: loggedDays ? minutes / loggedDays : 0,
+  };
+}
+
+interface Tally {
+  minutes: number;
+  dates: Set<string>;
+  weekdayMinutes: number;
+  weekdayDates: Set<string>;
+  weekendMinutes: number;
+  weekendDates: Set<string>;
+  entries: Set<string>;
+}
+
+function tally(): Tally {
+  return {
+    minutes: 0,
+    dates: new Set(),
+    weekdayMinutes: 0,
+    weekdayDates: new Set(),
+    weekendMinutes: 0,
+    weekendDates: new Set(),
+    entries: new Set(),
+  };
+}
+
+function add(t: Tally, s: Segment) {
+  t.minutes += s.minutes;
+  t.dates.add(s.date);
+  t.entries.add(s.entry.id);
+  if (isWeekend(s.date)) {
+    t.weekendMinutes += s.minutes;
+    t.weekendDates.add(s.date);
+  } else {
+    t.weekdayMinutes += s.minutes;
+    t.weekdayDates.add(s.date);
+  }
+}
+
+export interface GroupStats {
+  minutes: number;
   entries: number;
+  all: Avg;
+  /** Mon-Fri */
+  weekday: Avg;
+  /** Sat-Sun */
+  weekend: Avg;
+}
+
+function groupStats(t: Tally, days: number, weekdays: number, weekendDays: number): GroupStats {
+  return {
+    minutes: t.minutes,
+    entries: t.entries.size,
+    all: avg(t.minutes, days, t.dates.size),
+    weekday: avg(t.weekdayMinutes, weekdays, t.weekdayDates.size),
+    weekend: avg(t.weekendMinutes, weekendDays, t.weekendDates.size),
+  };
+}
+
+export interface SubStat extends GroupStats {
+  name: string | null;
+}
+
+export interface ActivityStat extends GroupStats {
+  activity: string;
   subs: SubStat[];
 }
 
-export interface JournalStats {
-  totalMinutes: number;
-  rangeDays: number;
-  activeDays: number;
-  entries: number;
-  avgPerDay: number;
-  avgPerActiveDay: number;
+export interface JournalStats extends GroupStats {
+  /** Calendar days in the counting window. */
+  days: number;
   byActivity: ActivityStat[];
-  /** Average minutes per Mon..Sun over the range's occurrences of that weekday. */
+  /** Average minutes per Mon..Sun over the window's occurrences of that weekday. */
   weekdayAvg: number[];
   longestStreak: number;
-  /** Consecutive active days ending at the range end (or the day before it,
-   * so an empty "today" doesn't zero a running streak). */
+  /** Consecutive logged days ending at the window end (or the day before,
+   * so a not-yet-logged today doesn't zero a running streak). */
   currentStreak: number;
+  bestDay: { date: string; minutes: number } | null;
+  longestEntry: { entry: JournalEntry; minutes: number } | null;
+  /** Total per 7 days. */
+  perWeek: number;
 }
 
-export function computeStats(segments: Segment[], from: string, to: string): JournalStats {
-  const rangeDays = Math.max(1, daysInclusive(from, to));
-  const activeDates = new Set<string>();
-  const entryIds = new Set<string>();
-  const acts = new Map<string, { minutes: number; dates: Set<string>; entries: Set<string>; subs: Map<string, { minutes: number; dates: Set<string> }> }>();
+/** `segments` must already be limited to the window (see inRange). */
+export function computeStats(segments: Segment[], w: CountingWindow): JournalStats {
+  const days = w.days;
+  const wdCounts = days ? weekdayCounts(w.from, days) : [0, 0, 0, 0, 0, 0, 0];
+  const weekdays = wdCounts.slice(0, 5).reduce((a, b) => a + b, 0);
+  const weekendDays = wdCounts[5] + wdCounts[6];
+
+  const total = tally();
+  const acts = new Map<string, { t: Tally; subs: Map<string, Tally> }>();
+  const perDate = new Map<string, number>();
+  const perEntry = new Map<string, { entry: JournalEntry; minutes: number }>();
   const weekdaySum = [0, 0, 0, 0, 0, 0, 0];
-  let totalMinutes = 0;
 
   for (const s of segments) {
-    totalMinutes += s.minutes;
-    activeDates.add(s.date);
-    entryIds.add(s.entry.id);
+    add(total, s);
     weekdaySum[weekdayIndex(s.date)] += s.minutes;
+    perDate.set(s.date, (perDate.get(s.date) ?? 0) + s.minutes);
+    const pe = perEntry.get(s.entry.id) ?? { entry: s.entry, minutes: 0 };
+    pe.minutes += s.minutes;
+    perEntry.set(s.entry.id, pe);
     let a = acts.get(s.activity);
     if (!a) {
-      a = { minutes: 0, dates: new Set(), entries: new Set(), subs: new Map() };
+      a = { t: tally(), subs: new Map() };
       acts.set(s.activity, a);
     }
-    a.minutes += s.minutes;
-    a.dates.add(s.date);
-    a.entries.add(s.entry.id);
+    add(a.t, s);
     const key = s.sub ?? "";
     let sub = a.subs.get(key);
     if (!sub) {
-      sub = { minutes: 0, dates: new Set() };
+      sub = tally();
       a.subs.set(key, sub);
     }
-    sub.minutes += s.minutes;
-    sub.dates.add(s.date);
-  }
-
-  // How many Mondays, Tuesdays, ... the range actually contains.
-  const weekdayCount = [0, 0, 0, 0, 0, 0, 0];
-  const firstWd = weekdayIndex(from);
-  for (let i = 0; i < 7; i++) {
-    weekdayCount[(firstWd + i) % 7] = Math.floor(rangeDays / 7) + (i < rangeDays % 7 ? 1 : 0);
+    add(sub, s);
   }
 
   let longestStreak = 0;
-  let run = 0;
-  for (let d = from; d <= to; d = addDays(d, 1)) {
-    run = activeDates.has(d) ? run + 1 : 0;
-    longestStreak = Math.max(longestStreak, run);
-  }
   let currentStreak = 0;
-  let d = activeDates.has(to) ? to : addDays(to, -1);
-  while (d >= from && activeDates.has(d)) {
-    currentStreak++;
-    d = addDays(d, -1);
+  if (days > 0) {
+    let run = 0;
+    for (let d = w.from; d <= w.to; d = addDays(d, 1)) {
+      run = perDate.has(d) ? run + 1 : 0;
+      longestStreak = Math.max(longestStreak, run);
+    }
+    let d = perDate.has(w.to) ? w.to : addDays(w.to, -1);
+    while (d >= w.from && perDate.has(d)) {
+      currentStreak++;
+      d = addDays(d, -1);
+    }
+  }
+
+  let bestDay: JournalStats["bestDay"] = null;
+  for (const [date, minutes] of perDate) {
+    if (minutes > 0 && (!bestDay || minutes > bestDay.minutes)) bestDay = { date, minutes };
+  }
+  let longestEntry: JournalStats["longestEntry"] = null;
+  for (const pe of perEntry.values()) {
+    if (pe.minutes > 0 && (!longestEntry || pe.minutes > longestEntry.minutes)) longestEntry = pe;
   }
 
   const byActivity: ActivityStat[] = [...acts.entries()]
     .map(([activity, a]) => ({
       activity,
-      minutes: a.minutes,
-      days: a.dates.size,
-      entries: a.entries.size,
+      ...groupStats(a.t, days, weekdays, weekendDays),
       subs: [...a.subs.entries()]
-        .map(([name, s]) => ({ name: name || null, minutes: s.minutes, days: s.dates.size }))
+        .map(([name, t]) => ({ name: name || null, ...groupStats(t, days, weekdays, weekendDays) }))
         .sort((x, y) => y.minutes - x.minutes),
     }))
-    .sort((x, y) => y.minutes - x.minutes || y.days - x.days);
+    .sort((x, y) => y.minutes - x.minutes || y.all.loggedDays - x.all.loggedDays);
 
   return {
-    totalMinutes,
-    rangeDays,
-    activeDays: activeDates.size,
-    entries: entryIds.size,
-    avgPerDay: totalMinutes / rangeDays,
-    avgPerActiveDay: activeDates.size ? totalMinutes / activeDates.size : 0,
+    ...groupStats(total, days, weekdays, weekendDays),
+    days,
     byActivity,
-    weekdayAvg: weekdaySum.map((sum, i) => (weekdayCount[i] ? sum / weekdayCount[i] : 0)),
+    weekdayAvg: weekdaySum.map((sum, i) => (wdCounts[i] ? sum / wdCounts[i] : 0)),
     longestStreak,
     currentStreak,
+    bestDay,
+    longestEntry,
+    perWeek: days ? (total.minutes / days) * 7 : 0,
   };
 }
 
-export type Bucket = "day" | "week" | "month";
+/** Relative change, or null when there's nothing to compare against. */
+export function change(now: number, before: number | undefined): number | null {
+  if (before === undefined || before === 0) return null;
+  return (now - before) / before;
+}
+
+export type Bucket = "day" | "week" | "month" | "year";
 
 export function bucketFor(rangeDays: number): Bucket {
   if (rangeDays <= 62) return "day";
   if (rangeDays <= 366) return "week";
-  return "month";
+  if (rangeDays <= 366 * 4) return "month";
+  return "year";
 }
 
 export function bucketStart(date: string, bucket: Bucket): string {
   if (bucket === "day") return date;
   if (bucket === "week") return startOfWeek(date);
+  if (bucket === "year") return date.slice(0, 5) + "01-01";
   return date.slice(0, 8) + "01";
 }
 
 function nextBucket(start: string, bucket: Bucket): string {
   if (bucket === "day") return addDays(start, 1);
   if (bucket === "week") return addDays(start, 7);
-  const d = parseDateStr(start);
-  d.setMonth(d.getMonth() + 1);
-  return toDateStr(d);
+  if (bucket === "year") return `${Number(start.slice(0, 4)) + 1}-01-01`;
+  return monthStart(start, 1);
 }
 
 export interface TimeBucket {

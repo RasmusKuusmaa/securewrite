@@ -1484,3 +1484,248 @@ textarea {
   font-size: 0.75rem;
   color: var(--muted);
 }
+
+/* Journal: notes, segmented controls, richer stats */
+
+.journal-secondary {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--accent);
+  padding: 0.35rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.journal-secondary:hover {
+  background: #e8effc;
+}
+
+.journal-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.journal-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--hover-bg);
+}
+
+.journal-segmented button {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.journal-segmented button.active {
+  background: #fff;
+  color: inherit;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.journal-entry-kind {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.journal-note-bar {
+  background: repeating-linear-gradient(180deg, #898781 0 4px, transparent 4px 7px);
+}
+
+.journal-entry-body {
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.journal-note-form {
+  max-width: 720px;
+}
+
+.journal-note-head {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr;
+  gap: 0.6rem;
+}
+
+.journal-note-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.journal-note-wrap {
+  position: relative;
+}
+
+.journal-note-body {
+  width: 100%;
+  min-height: 18rem;
+  resize: vertical;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  padding: 0.6rem 0.75rem;
+}
+
+.journal-note-mask {
+  position: absolute;
+  inset: 1px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--muted);
+}
+
+.journal-note-count {
+  margin-right: auto;
+  align-self: center;
+}
+
+.journal-cal-note {
+  margin-right: 0.25rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.journal-stats-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.journal-stats-head p {
+  margin: 0;
+}
+
+.journal-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.journal-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.journal-panel-head h3 {
+  margin: 0;
+}
+
+.journal-table-wrap {
+  overflow-x: auto;
+}
+
+.journal-table-wrap .journal-table {
+  min-width: 720px;
+}
+
+.journal-tile-delta {
+  font-size: 0.75rem;
+  margin-top: 0.1rem;
+}
+
+.journal-delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.journal-delta.up {
+  color: #006300;
+}
+
+.journal-delta.down {
+  color: #d03b3b;
+}
+
+.journal-delta.flat {
+  color: var(--muted);
+}
+
+.journal-chart-avg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed #52514e;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.journal-chart-avg span {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  font-size: 0.68rem;
+  color: #52514e;
+  background: rgba(252, 252, 251, 0.85);
+  padding: 0 0.2rem;
+}
+
+.journal-weekday.weekend .journal-weekday-fill {
+  background: #86b6ef;
+}
+
+.journal-weekday.weekend .journal-weekday-label {
+  font-weight: 600;
+}
+
+/* Settings: mask shortcut */
+
+.settings-shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.settings-shortcut-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.settings-shortcut kbd {
+  font-family: inherit;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #fff;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.settings-shortcut kbd.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-shortcut-reset {
+  align-self: flex-start;
+  padding-left: 0;
+}
