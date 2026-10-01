@@ -79,6 +79,8 @@ export default function EntryForm({ target, catalog, onClose }: Props) {
     try {
       const entry: JournalEntry = {
         id: existing?.id ?? "",
+        kind: "time",
+        title: "",
         date,
         activity: activity.trim(),
         minutes: effectiveTotal,

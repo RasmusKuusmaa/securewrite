@@ -11,9 +11,23 @@ interface Props {
 }
 
 export default function EntryCard({ entry, catalog, onEdit }: Props) {
-  const remove = useJournal((s) => s.remove);
   const mask = useMaskText();
-  const [confirming, setConfirming] = useState(false);
+
+  if (entry.kind === "note") {
+    return (
+      <li className="journal-entry journal-entry-note-card">
+        <span className="journal-entry-bar journal-note-bar" />
+        <div className="journal-entry-main">
+          <div className="journal-entry-head">
+            <span className="journal-entry-kind">Journal</span>
+            {entry.title && <span className="journal-entry-activity">{mask(entry.title)}</span>}
+          </div>
+          {entry.note && <p className="journal-entry-note journal-entry-body">{mask(entry.note)}</p>}
+        </div>
+        <EntryActions entry={entry} onEdit={onEdit} />
+      </li>
+    );
+  }
 
   const slot = catalog.find((a) => a.name === entry.activity)?.slot ?? -1;
   const allocated = entry.parts.reduce((sum, p) => sum + p.minutes, 0);
@@ -43,27 +57,35 @@ export default function EntryCard({ entry, catalog, onEdit }: Props) {
         )}
         {entry.note && <p className="journal-entry-note">{mask(entry.note)}</p>}
       </div>
-      <div className="journal-entry-actions">
-        {confirming ? (
-          <>
-            <button type="button" onClick={() => remove(entry.id)}>
-              Delete
-            </button>
-            <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" className="icon-button" onClick={() => onEdit(entry)} title="Edit">
-              Edit
-            </button>
-            <button type="button" className="icon-button" onClick={() => setConfirming(true)} title="Delete">
-              ×
-            </button>
-          </>
-        )}
-      </div>
+      <EntryActions entry={entry} onEdit={onEdit} />
     </li>
+  );
+}
+
+function EntryActions({ entry, onEdit }: { entry: JournalEntry; onEdit: (entry: JournalEntry) => void }) {
+  const remove = useJournal((s) => s.remove);
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="journal-entry-actions">
+      {confirming ? (
+        <>
+          <button type="button" onClick={() => remove(entry.id)}>
+            Delete
+          </button>
+          <button type="button" onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="icon-button" onClick={() => onEdit(entry)} title="Edit">
+            Edit
+          </button>
+          <button type="button" className="icon-button" onClick={() => setConfirming(true)} title="Delete">
+            ×
+          </button>
+        </>
+      )}
+    </div>
   );
 }

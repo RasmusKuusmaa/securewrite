@@ -21,10 +21,19 @@ pub struct JournalEntry {
     /// Empty on a brand new entry - save_journal_entry assigns one.
     #[serde(default)]
     pub id: String,
+    /// "time" (activity + duration) or "note" (free-form journal writing,
+    /// no activity or duration). Entries saved before notes existed are "time".
+    #[serde(default = "default_kind")]
+    pub kind: String,
     /// Local calendar day, YYYY-MM-DD.
     pub date: String,
+    #[serde(default)]
     pub activity: String,
+    #[serde(default)]
     pub minutes: u32,
+    /// Optional heading for notes.
+    #[serde(default)]
+    pub title: String,
     #[serde(default)]
     pub parts: Vec<JournalPart>,
     #[serde(default)]
@@ -33,6 +42,10 @@ pub struct JournalEntry {
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: i64,
+}
+
+fn default_kind() -> String {
+    "time".to_string()
 }
 
 /// Same shape as documents.rs's EncryptedDocFile: only the random id is
@@ -89,12 +102,23 @@ fn is_valid_date(date: &str) -> bool {
 /// Trims names, drops empty/zero parts, and makes sure the total is at least
 /// the sum of its parts - so stats never see a breakdown bigger than its whole.
 fn normalize(mut entry: JournalEntry) -> Result<JournalEntry, String> {
+    if !is_valid_date(&entry.date) {
+        return Err("Invalid date".to_string());
+    }
+    entry.title = entry.title.trim().to_string();
+    if entry.kind == "note" {
+        if entry.title.is_empty() && entry.note.trim().is_empty() {
+            return Err("Write something first".to_string());
+        }
+        entry.activity = String::new();
+        entry.minutes = 0;
+        entry.parts = Vec::new();
+        return Ok(entry);
+    }
+    entry.kind = "time".to_string();
     entry.activity = entry.activity.trim().to_string();
     if entry.activity.is_empty() {
         return Err("Activity is required".to_string());
-    }
-    if !is_valid_date(&entry.date) {
-        return Err("Invalid date".to_string());
     }
     entry.parts = entry
         .parts
@@ -188,9 +212,11 @@ mod tests {
     fn sample() -> JournalEntry {
         JournalEntry {
             id: String::new(),
+            kind: String::new(),
             date: "2026-09-30".to_string(),
             activity: "  Studies ".to_string(),
             minutes: 60,
+            title: String::new(),
             parts: vec![
                 JournalPart { name: "Math".to_string(), minutes: 90 },
                 JournalPart { name: "Physics".to_string(), minutes: 60 },
@@ -206,6 +232,7 @@ mod tests {
     #[test]
     fn normalize_trims_drops_empty_parts_and_grows_total() {
         let entry = normalize(sample()).unwrap();
+        assert_eq!(entry.kind, "time");
         assert_eq!(entry.activity, "Studies");
         assert_eq!(entry.parts.len(), 2);
         assert_eq!(entry.minutes, 150);
@@ -219,6 +246,27 @@ mod tests {
         let mut e = sample();
         e.date = "30.09.2026".to_string();
         assert!(normalize(e).is_err());
+    }
+
+    #[test]
+    fn notes_need_text_and_drop_time_fields() {
+        let mut e = sample();
+        e.kind = "note".to_string();
+        e.note = "Dear diary".to_string();
+        let n = normalize(e).unwrap();
+        assert_eq!(n.kind, "note");
+        assert!(n.activity.is_empty() && n.parts.is_empty() && n.minutes == 0);
+        let mut e = sample();
+        e.kind = "note".to_string();
+        e.note = "  ".to_string();
+        assert!(normalize(e).is_err());
+    }
+
+    #[test]
+    fn entries_saved_before_kinds_existed_load_as_time() {
+        let old = r#"{"date":"2026-09-30","activity":"Gym","minutes":60}"#;
+        let e: JournalEntry = serde_json::from_str(old).unwrap();
+        assert_eq!(e.kind, "time");
     }
 
     #[test]

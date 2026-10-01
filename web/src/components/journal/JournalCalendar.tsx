@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useJournal } from "../../store/useJournal";
-import type { JournalEntry } from "../../types";
+import type { JournalEntry, JournalKind } from "../../types";
 import {
   addDays,
   colorForSlot,
+  filterNotes,
   filterSegments,
   formatDayLong,
   formatDuration,
@@ -22,7 +23,7 @@ import { useMaskText } from "./useMaskText";
 interface Props {
   catalog: ActivityInfo[];
   onEdit: (entry: JournalEntry) => void;
-  onAdd: (date: string) => void;
+  onAdd: (kind: JournalKind, date: string) => void;
 }
 
 interface DayCell {
@@ -30,6 +31,7 @@ interface DayCell {
   /** activity -> minutes, in catalog order for stable stacking */
   byActivity: [string, number][];
   entries: JournalEntry[];
+  notes: number;
 }
 
 const MAX_LINES = 3;
@@ -69,12 +71,24 @@ export default function JournalCalendar({ catalog, onEdit, onAdd }: Props) {
         active.add(s.date);
       }
     }
+    const noteCount = new Map<string, number>();
+    for (const note of filterNotes(entries, filter)) {
+      if (note.date < gridStart || note.date > gridEnd) continue;
+      let c = tmp.get(note.date);
+      if (!c) {
+        c = { minutes: 0, acts: new Map(), entries: [] };
+        tmp.set(note.date, c);
+      }
+      c.entries.push(note);
+      noteCount.set(note.date, (noteCount.get(note.date) ?? 0) + 1);
+    }
     const cells = new Map<string, DayCell>();
     for (const [date, c] of tmp) {
       cells.set(date, {
         minutes: c.minutes,
         byActivity: [...c.acts.entries()].sort((a, b) => (order.get(a[0]) ?? 0) - (order.get(b[0]) ?? 0)),
-        entries: c.entries,
+        entries: c.entries.sort((a, b) => a.createdAt - b.createdAt),
+        notes: noteCount.get(date) ?? 0,
       });
     }
     return { cells, monthTotal, monthActive: active.size };
@@ -144,13 +158,16 @@ export default function JournalCalendar({ catalog, onEdit, onAdd }: Props) {
                     date === selected ? "selected" : "",
                   ].join(" ")}
                   onClick={() => setSelected(date)}
-                  onDoubleClick={() => onAdd(date)}
+                  onDoubleClick={() => onAdd("time", date)}
                   title={cell ? `${formatDayLong(date)}: ${formatDuration(cell.minutes)}` : formatDayLong(date)}
                 >
                   <span className="journal-cal-daynum">{Number(date.slice(8))}</span>
                   {cell && (
                     <>
-                      <span className="journal-cal-total">{cell.minutes > 0 ? formatDuration(cell.minutes) : "✓"}</span>
+                      <span className="journal-cal-total">
+                        {cell.notes > 0 && <span className="journal-cal-note" title="Journal entry">✎</span>}
+                        {cell.minutes > 0 ? formatDuration(cell.minutes) : cell.byActivity.length ? "✓" : ""}
+                      </span>
                       {cell.minutes > 0 && (
                         <span className="journal-cal-stack">
                           {cell.byActivity
@@ -191,9 +208,12 @@ export default function JournalCalendar({ catalog, onEdit, onAdd }: Props) {
         <h3 className="journal-day-head">
           <span>{formatDayLong(selected)}</span>
           <span>
-            {selectedCell && formatDuration(selectedCell.minutes)}
-            <button type="button" className="journal-link" onClick={() => onAdd(selected)}>
-              + Log on this day
+            {selectedCell && selectedCell.minutes > 0 && formatDuration(selectedCell.minutes)}
+            <button type="button" className="journal-link" onClick={() => onAdd("note", selected)}>
+              + Journal
+            </button>
+            <button type="button" className="journal-link" onClick={() => onAdd("time", selected)}>
+              + Log time
             </button>
           </span>
         </h3>

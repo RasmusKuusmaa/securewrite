@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useJournal } from "../../store/useJournal";
 import type { JournalEntry } from "../../types";
 import {
+  filterNotes,
   filterSegments,
   formatDayLong,
   formatDuration,
@@ -40,6 +41,16 @@ export default function JournalLog({ catalog, onEdit }: Props) {
       total += s.minutes;
       if (!day.entries.includes(s.entry)) day.entries.push(s.entry);
     }
+    for (const note of filterNotes(entries, filter)) {
+      if (note.date < from || note.date > to) continue;
+      let day = byDay.get(note.date);
+      if (!day) {
+        day = { minutes: 0, entries: [] };
+        byDay.set(note.date, day);
+      }
+      day.entries.push(note);
+    }
+    for (const day of byDay.values()) day.entries.sort((a, b) => a.createdAt - b.createdAt);
     return { days: [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0])), total };
   }, [entries, filter]);
 
@@ -52,13 +63,14 @@ export default function JournalLog({ catalog, onEdit }: Props) {
   return (
     <div className="journal-log">
       <p className="journal-muted journal-log-summary">
-        {days.length} {days.length === 1 ? "day" : "days"} · {formatDuration(total)} total
+        {days.length} {days.length === 1 ? "day" : "days"}
+        {total > 0 && ` · ${formatDuration(total)} logged`}
       </p>
       {shown.map(([date, day]) => (
         <section key={date} className="journal-day">
           <h3 className="journal-day-head">
             <span>{formatDayLong(date)}</span>
-            <span>{formatDuration(day.minutes)}</span>
+            <span>{day.minutes > 0 ? formatDuration(day.minutes) : ""}</span>
           </h3>
           <ul className="journal-entries">
             {day.entries.map((e) => (

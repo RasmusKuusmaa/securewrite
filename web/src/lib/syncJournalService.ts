@@ -1,7 +1,7 @@
 import { api } from "./api";
 import { encryptJson, decryptJson } from "./crypto";
 import { getVaultContext } from "./syncVaultService";
-import { stampEntry, sortEntries } from "./journalEntry";
+import { stampEntry, sortEntries, upgradeEntry } from "./journalEntry";
 import type { JournalEntry } from "../types";
 
 // Sync-mode counterpart to journalService.ts, backed by ../../server's
@@ -14,7 +14,7 @@ export async function listJournalEntries(): Promise<JournalEntry[]> {
   for (const record of records) {
     try {
       const entry = await decryptJson<JournalEntry>(key, record.nonce, record.ciphertext);
-      entries.push({ ...entry, id: record.id });
+      entries.push(upgradeEntry({ ...entry, id: record.id }));
     } catch {
       // skip records that fail to decrypt rather than crash the whole list
     }

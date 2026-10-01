@@ -7,6 +7,8 @@ import {
   GENERAL_LABEL,
   type ActivityInfo,
   type RangePreset,
+  type ShowKind,
+  DEFAULT_RANGE,
 } from "../../lib/journal";
 import { useMaskText } from "./useMaskText";
 
@@ -14,9 +16,17 @@ interface Props {
   catalog: ActivityInfo[];
   /** The calendar pages by month itself, so it hides the range control. */
   showRange: boolean;
+  /** Stats are about time, so they hide the time/journal switch. */
+  showKind: boolean;
 }
 
-export default function JournalFilters({ catalog, showRange }: Props) {
+const KINDS: { value: ShowKind; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "time", label: "Time" },
+  { value: "note", label: "Journal" },
+];
+
+export default function JournalFilters({ catalog, showRange, showKind }: Props) {
   const filter = useJournal((s) => s.filter);
   const setFilter = useJournal((s) => s.setFilter);
   const resetFilter = useJournal((s) => s.resetFilter);
@@ -41,11 +51,28 @@ export default function JournalFilters({ catalog, showRange }: Props) {
   };
 
   const selected = catalog.filter((a) => filter.activities.includes(a.name));
-  const narrowed = isFilterNarrowed(filter) || (showRange && filter.range !== "30d");
+  const narrowed = isFilterNarrowed(filter) || (showRange && filter.range !== DEFAULT_RANGE);
+  const activityChips = filter.show !== "note";
 
   return (
     <div className="journal-filters">
       <div className="journal-filter-row">
+        {showKind && (
+          <div className="journal-segmented" role="radiogroup" aria-label="Entry type">
+            {KINDS.map((k) => (
+              <button
+                key={k.value}
+                type="button"
+                role="radio"
+                aria-checked={filter.show === k.value}
+                className={filter.show === k.value ? "active" : ""}
+                onClick={() => setFilter({ show: k.value })}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+        )}
         {showRange && (
           <>
             <select
@@ -84,7 +111,7 @@ export default function JournalFilters({ catalog, showRange }: Props) {
         <input
           type="search"
           className="journal-input journal-search"
-          placeholder="Search notes..."
+          placeholder="Search notes and journal..."
           value={filter.query}
           onChange={(e) => setFilter({ query: e.target.value })}
         />
@@ -95,7 +122,7 @@ export default function JournalFilters({ catalog, showRange }: Props) {
         )}
       </div>
 
-      {catalog.length > 0 && (
+      {activityChips && catalog.length > 0 && (
         <div className="journal-filter-row journal-chips" aria-label="Filter by activity">
           {catalog.map((a) => (
             <button
@@ -112,7 +139,7 @@ export default function JournalFilters({ catalog, showRange }: Props) {
         </div>
       )}
 
-      {selected.some((a) => a.subs.length > 0) && (
+      {activityChips && selected.some((a) => a.subs.length > 0) && (
         <div className="journal-filter-row journal-chips" aria-label="Filter by sub-activity">
           {selected
             .filter((a) => a.subs.length > 0)
