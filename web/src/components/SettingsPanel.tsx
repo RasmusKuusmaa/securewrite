@@ -3,6 +3,7 @@ import { useSettings } from "../store/useSettings";
 import { useVault } from "../store/useVault";
 import { useBackendMode } from "../store/useBackendMode";
 import DuressPasswordSetup from "./DuressPasswordSetup";
+import MaskShortcutSetting from "./MaskShortcutSetting";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -11,6 +12,7 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const idleTimeoutMinutes = useSettings((s) => s.idleTimeoutMinutes);
   const lockOnBlur = useSettings((s) => s.lockOnBlur);
+  const maskOnOpen = useSettings((s) => s.maskOnOpen);
   const update = useSettings((s) => s.update);
   const isDecoy = useVault((s) => s.isDecoy);
   const username = useVault((s) => s.username);
@@ -57,6 +59,17 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) => update({ lockOnBlur: e.target.checked })}
           />
         </label>
+
+        <label className="settings-row settings-row-checkbox">
+          <span>Start masked every time the app is unlocked</span>
+          <input
+            type="checkbox"
+            checked={maskOnOpen}
+            onChange={(e) => update({ maskOnOpen: e.target.checked })}
+          />
+        </label>
+
+        <MaskShortcutSetting />
 
         {isSyncMode && !isDecoy && (
           <div className="settings-row">

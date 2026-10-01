@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDocuments } from "../store/useDocuments";
 import { useSettings } from "../store/useSettings";
+import { useMask } from "../store/useMask";
 import SearchBar from "./SearchBar";
 import FlowModeDialog from "./FlowModeDialog";
 import { scrambleText } from "../lib/mask";
@@ -21,7 +22,9 @@ export default function Editor() {
   const overlayRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [masked, setMasked] = useState(false);
+  const masked = useMask((s) => s.masked);
+  const toggleMask = useMask((s) => s.toggle);
+  const maskShortcut = useSettings((s) => s.maskShortcut);
 
   // Flow-writing mode: opt-in per session, off whenever the active document
   // changes. Pausing past the threshold wipes back to flowCheckpoint - the
@@ -104,9 +107,6 @@ export default function Editor() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setSearchOpen(true);
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
-        e.preventDefault();
-        setMasked((v) => !v);
       } else if (e.key === "Escape") {
         setSearchOpen(false);
       }
@@ -115,23 +115,6 @@ export default function Editor() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Auto-mask when the window loses focus (alt-tab away) or this tab is
-  // switched away from - always on, since re-revealing is a single
-  // click/shortcut away and costs nothing to leave enabled. Tab-hide matters
-  // more than window blur in a browser: switching tabs within the same
-  // window is the common case, not just switching OS windows.
-  useEffect(() => {
-    const handleBlur = () => setMasked(true);
-    const handleVisibility = () => {
-      if (document.hidden) setMasked(true);
-    };
-    window.addEventListener("blur", handleBlur);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, []);
 
   const syncOverlayScroll = () => {
     if (overlayRef.current && textareaRef.current) {
@@ -139,6 +122,10 @@ export default function Editor() {
       overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
     }
   };
+
+  // Hooks must run on every render, so this sits above the early return.
+  const content = activeDoc?.content ?? "";
+  const maskedContent = useMemo(() => (masked ? scrambleText(content) : ""), [masked, content]);
 
   if (!activeDoc) {
     return (
@@ -148,14 +135,9 @@ export default function Editor() {
     );
   }
 
-  const content = activeDoc.content;
   const words = content.trim().length === 0 ? 0 : content.trim().split(/\s+/).length;
   const chars = content.length;
 
-  // Recomputed on every render while masked so identical letters don't get
-  // the same glyph twice in a row - no stable mapping for an observer to
-  // learn over time.
-  const maskedContent = useMemo(() => (masked ? scrambleText(content) : ""), [masked, content]);
 
   return (
     <main className="editor">
@@ -173,8 +155,8 @@ export default function Editor() {
         <button
           type="button"
           className={`icon-button ${masked ? "icon-button-active" : ""}`}
-          onClick={() => setMasked((v) => !v)}
-          title="Toggle masked view (Ctrl+Shift+H)"
+          onClick={toggleMask}
+          title={`Toggle masked view (${maskShortcut})`}
         >
           {masked ? "Unmask" : "Mask"}
         </button>

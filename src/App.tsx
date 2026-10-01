@@ -9,6 +9,8 @@ import { useDocuments } from "./store/useDocuments";
 import { useJournal } from "./store/useJournal";
 import { useVault } from "./store/useVault";
 import { useSettings } from "./store/useSettings";
+import { useMask } from "./store/useMask";
+import { matchesShortcut } from "./lib/shortcut";
 import "./App.css";
 
 function App() {
@@ -46,6 +48,32 @@ function App() {
       docsInit();
     }
   }, [unlocked, docsInit]);
+
+  // Masking is app-wide: every unlock starts masked (unless turned off in
+  // settings), the toggle shortcut is user-configurable, and switching away
+  // from the window or tab re-masks as a safety net.
+  useEffect(() => {
+    if (!unlocked) return;
+    useMask.getState().setMasked(useSettings.getState().maskOnOpen);
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (matchesShortcut(e, useSettings.getState().maskShortcut)) {
+        e.preventDefault();
+        useMask.getState().toggle();
+      }
+    };
+    const mask = () => useMask.getState().setMasked(true);
+    const handleVisibility = () => {
+      if (document.hidden) mask();
+    };
+    window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("blur", mask);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("blur", mask);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [unlocked]);
 
   useEffect(() => {
     if (!unlocked) return;

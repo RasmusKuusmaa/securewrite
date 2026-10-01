@@ -12,11 +12,9 @@ interface JournalState {
   tab: JournalTab;
   entries: JournalEntry[];
   loaded: boolean;
-  masked: boolean;
   filter: JournalFilter;
   setView: (view: AppView) => Promise<void>;
   setTab: (tab: JournalTab) => void;
-  setMasked: (masked: boolean) => void;
   setFilter: (patch: Partial<JournalFilter>) => void;
   resetFilter: () => void;
   load: () => Promise<void>;
@@ -37,7 +35,6 @@ export const useJournal = create<JournalState>((set, get) => ({
   tab: "log",
   entries: [],
   loaded: false,
-  masked: false,
   filter: defaultFilter(),
 
   setView: async (view) => {
@@ -50,7 +47,6 @@ export const useJournal = create<JournalState>((set, get) => ({
   },
 
   setTab: (tab) => set({ tab }),
-  setMasked: (masked) => set({ masked }),
   setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
   resetFilter: () => set({ filter: defaultFilter() }),
 
@@ -83,6 +79,6 @@ export const useJournal = create<JournalState>((set, get) => ({
   // Called on lock: drop decrypted entries from JS memory.
   reset: () => {
     loadPromise = null;
-    set({ view: "documents", tab: "log", entries: [], loaded: false, masked: false, filter: defaultFilter() });
+    set({ view: "documents", tab: "log", entries: [], loaded: false, filter: defaultFilter() });
   },
 }));

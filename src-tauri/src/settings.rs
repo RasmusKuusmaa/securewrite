@@ -12,10 +12,24 @@ pub struct Settings {
     pub flow_pause_seconds: u32,
     #[serde(default)]
     pub flow_hardcore: bool,
+    /// Start every unlock with the editor/journal masked.
+    #[serde(default = "default_true")]
+    pub mask_on_open: bool,
+    /// Toggle-mask shortcut, e.g. "Ctrl+Shift+H" (see src/lib/shortcut.ts).
+    #[serde(default = "default_mask_shortcut")]
+    pub mask_shortcut: String,
 }
 
 fn default_flow_pause_seconds() -> u32 {
     6
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_mask_shortcut() -> String {
+    "Ctrl+Shift+H".to_string()
 }
 
 impl Default for Settings {
@@ -25,6 +39,8 @@ impl Default for Settings {
             lock_on_blur: false,
             flow_pause_seconds: 6,
             flow_hardcore: false,
+            mask_on_open: true,
+            mask_shortcut: default_mask_shortcut(),
         }
     }
 }

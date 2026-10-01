@@ -6,6 +6,8 @@ interface Settings {
   lockOnBlur: boolean;
   flowPauseSeconds: number;
   flowHardcore: boolean;
+  maskOnOpen: boolean;
+  maskShortcut: string;
 }
 
 interface SettingsState extends Settings {
@@ -19,6 +21,8 @@ export const useSettings = create<SettingsState>((set, get) => ({
   lockOnBlur: false,
   flowPauseSeconds: 6,
   flowHardcore: false,
+  maskOnOpen: true,
+  maskShortcut: "Ctrl+Shift+H",
   loaded: false,
 
   load: async () => {
@@ -27,12 +31,14 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
 
   update: async (patch: Partial<Settings>) => {
-    const { idleTimeoutMinutes, lockOnBlur, flowPauseSeconds, flowHardcore } = get();
+    const { idleTimeoutMinutes, lockOnBlur, flowPauseSeconds, flowHardcore, maskOnOpen, maskShortcut } = get();
     const next: Settings = {
       idleTimeoutMinutes,
       lockOnBlur,
       flowPauseSeconds,
       flowHardcore,
+      maskOnOpen,
+      maskShortcut,
       ...patch,
     };
     await invoke("save_settings", { settings: next });
